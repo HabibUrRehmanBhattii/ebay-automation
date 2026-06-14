@@ -53,7 +53,7 @@ const EBAY_MARKETPLACES = {
     weightLabel: /Gewicht eingeben in Kilogramm/i,
     lengthLabel: /Paketlänge eingeben in/i, widthLabel: /Paketbreite eingeben in/i, depthLabel: /Pakettiefe eingeben in/i,
     countryOriginLabel: /Herkunftsland/i, listItBtn: 'Artikel kostenlos einstellen', successHeading: /Ihr Angebot ist jetzt live/i,
-    skipSellerHub: true },
+    skipSellerHub: true, sellSimilarLink: 'Helemet' },
 'ebay.fr':     { domain: 'ebay.fr',     homeUrl: 'https://www.ebay.fr/',    locale: 'fr', currency: 'EUR', weightUnit: 'kg', dimUnit: 'cm',
     category: 'Ensembles et packs de jouets de construction complets', conditionLabel: 'Neuf', country: 'France', countrySearch: 'fran',
     searchBtn: 'Rechercher', createListingBtn: 'Créer une annonce', singleListingBtn: 'Annonce simple',
@@ -461,11 +461,26 @@ async function createEbayListing({ searchName, title, description, price, imageP
     const domain = mp.domain;
 
     // ---- 1. Navigate to listing creation ----
-    if (mp.skipSellerHub) {
-      // Skip Seller Hub entirely — go directly to prelist/suggest
+    let sellSimilarUsed = false;
+    if (mp.skipSellerHub && mp.sellSimilarLink) {
+      // PRIMARY: start from prelist, try Sell Similar on template listing first
       await page.goto(`https://www.${domain}/sl/prelist/suggest?sr=shstart`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      sendLog(`[1/10] Direct prelist: ${page.url()}`);
-    } else {
+      await delay(4000);
+      sendLog(`[1/10] Prelist: ${page.url()}`);
+      try {
+        sendLog(`[1/10] PRIMARY: Sell Similar "${mp.sellSimilarLink}"...`);
+        await page.getByRole('link', { name: mp.sellSimilarLink }).click({ timeout: 8000 });
+        sellSimilarUsed = true;
+        await delay(4000);
+        for (const p of context.pages()) {
+          if (p !== page && p.url().includes('ebay.') && (p.url().includes('/sl/sell') || p.url().includes('/lstng'))) {
+            await page.close().catch(() => {}); page = p; await page.bringToFront(); break;
+          }
+        }
+        sendLog(`[1/10] Sell Similar OK → form: ${page.url()}`);
+      } catch (_) { sendLog('[1/10] Sell Similar unavailable — using prelist.'); }
+    }
+    if (!mp.skipSellerHub) {
       await page.goto(`https://www.${domain}/sh/lst/active`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await delay(4000);
       sendLog('[1/10] Create listing...');
@@ -482,6 +497,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
     }
     await delay(3000);
 
+    if (!sellSimilarUsed) {
     // ---- 2. Type product name -> Search ----
     try {
       const currentUrl = page.url();
@@ -588,6 +604,8 @@ async function createEbayListing({ searchName, title, description, price, imageP
         break;
       }
     }
+
+    } // end if(!sellSimilarUsed)
 
     // ============ ACTUAL LISTING FORM ============
     sendLog(`[Form] ${page.url()}`);
