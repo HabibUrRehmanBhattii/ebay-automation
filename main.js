@@ -1348,6 +1348,34 @@ ipcMain.handle('unzip-folder', async (e, folderPath) => {
   return await forceExtractImagesFromZips(folderPath);
 });
 
+// Bulk unzip: extract from ALL subfolders that have ≤1 image and contain zip files
+ipcMain.handle('unzip-all', async (e) => {
+  if (!targetFolder) return { success: false, message: 'No folder selected' };
+  let total = 0, skipped = 0;
+  sendLog(`[Unzip All]: Scanning subfolders for zips...`);
+  try {
+    const entries = await fs.readdir(targetFolder, { withFileTypes: true });
+    const subdirs = entries.filter(d => d.isDirectory());
+    for (const dir of subdirs) {
+      const fp = path.join(targetFolder, dir.name);
+      const images = await getImagesInFolder(fp);
+      if (images.length <= 1 && await hasZipFileRecursive(fp)) {
+        sendLog(`[Unzip All]: Extracting "${dir.name}"...`);
+        await extractImagesFromZips(fp);
+        await fs.writeFile(path.join(fp, '.extracted-imgs'), 'extracted', 'utf8');
+        total++;
+      } else {
+        skipped++;
+      }
+    }
+    sendLog(`[Unzip All]: Done. ${total} folders extracted, ${skipped} skipped.`);
+    return { success: true, extracted: total, skipped };
+  } catch (err) {
+    sendLog(`[Unzip All Error]: ${err.message}`);
+    return { success: false, message: err.message };
+  }
+});
+
 ipcMain.handle('rename-folder', async (e, p) => {
   const { parentPath, oldName, newName } = p || {};
   if (!parentPath || !oldName || !newName) return { success: false, message: 'Invalid args' };

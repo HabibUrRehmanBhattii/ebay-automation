@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
   saveFolderCustomization: (folderName, price, template) => ipcRenderer.invoke('save-folder-customization', { folderName, price, template }),
   unzipFolder: (folderPath) => ipcRenderer.invoke('unzip-folder', folderPath),
+  unzipAll: () => ipcRenderer.invoke('unzip-all'),
 
   // Automation control
   startAutomation: (payload) => ipcRenderer.invoke('start-automation', payload),

@@ -1062,6 +1062,32 @@ function setupControlButtons() {
 
   pickBtn.addEventListener('click', selectAndScanFolder);
   rescanBtn.addEventListener('click', scanCurrentFolder);
+
+  // Master "Unzip All" button — extract from all subfolders with ≤1 image
+  const unzipAllBtn = document.getElementById('unzip-all-btn');
+  if (unzipAllBtn) {
+    unzipAllBtn.addEventListener('click', async () => {
+      if (!currentFolder) { alert('Please select a folder first.'); return; }
+      if (!confirm('Extract images from ALL subfolders that have 0-1 images and contain zip files?\n\nThis may take a while.')) return;
+      unzipAllBtn.disabled = true;
+      unzipAllBtn.textContent = '⏳ Extracting...';
+      addLog('[Unzip All]: Scanning all subfolders...', 'system');
+      try {
+        const res = await window.api.unzipAll();
+        if (res && res.success) {
+          addLog(`[Unzip All]: Done — ${res.extracted} folders extracted, ${res.skipped} skipped.`, 'system');
+          await scanCurrentFolder();
+        } else {
+          addLog(`[Unzip All]: ${res?.message || 'Failed'}`, 'system');
+        }
+      } catch (err) {
+        addLog(`[Unzip All Error]: ${err.message}`, 'system');
+      }
+      unzipAllBtn.disabled = false;
+      unzipAllBtn.textContent = '📦 Unzip All';
+    });
+  }
+
   if (cleanNamesBtn) {
     cleanNamesBtn.addEventListener('click', async () => {
       if (!currentFolder) {
