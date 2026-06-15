@@ -356,6 +356,49 @@ ipcMain.handle('clean-folder-names', async (event, folderPath) => {
 
 // ==================== Automation Engine ====================
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function jitter(baseMs = 1500) { return Math.floor(Math.random() * baseMs * 0.7 + baseMs * 0.65); }
+function randomBetween(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+// Dynamic catalog-bypass search: extracts meaningful keywords from product name
+function getSearchKeywords(itemName) {
+  const cleaned = itemName.replace(/[\d+_-]/g, ' ').replace(/\.stl|\.obj|\.3mf/gi, '').replace(/\s{2,}/g, ' ').trim();
+  const words = cleaned.split(/\s+/).filter(w => w.length > 1);
+  // Pick 2-3 random keywords to avoid identical searches every run
+  const count = Math.min(words.length, randomBetween(2, 3));
+  const shuffled = words.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count).join(' ');
+}
+
+// Humanized mouse click: hover first with random offset, then click with micro-delay
+async function humanClick(page, selector, opts = {}) {
+  const el = typeof selector === 'string' ? page.locator(selector) : selector;
+  try {
+    const box = await el.boundingBox();
+    if (box) {
+      const offsetX = randomBetween(-5, 5);
+      const offsetY = randomBetween(-3, 3);
+      await page.mouse.move(box.x + box.width / 2 + offsetX, box.y + box.height / 2 + offsetY, { steps: randomBetween(3, 8) });
+      await delay(randomBetween(80, 250));
+    }
+    await el.click({ timeout: opts.timeout || 10000, force: opts.force });
+  } catch (_) {
+    await el.click({ timeout: opts.timeout || 10000, force: true });
+  }
+}
+
+// Humanized type: types character by character with natural speed variation
+async function humanType(page, selector, text) {
+  const el = typeof selector === 'string' ? page.locator(selector) : selector;
+  await el.click();
+  await delay(jitter(200));
+  await el.press('ControlOrMeta+a');
+  await delay(jitter(150));
+  for (const char of text) {
+    await el.press(char);
+    await delay(randomBetween(30, 120));
+  }
+}
+
 async function fillSlowly(locator, text) {
   await locator.click();
   await delay(200);
@@ -519,9 +562,11 @@ async function createEbayListing({ searchName, title, description, price, imageP
         catch (_) {}
       }
       if (!sellBox) throw new Error('No search box on page');
-      // Always search for a known-safe test term to skip eBay's product catalog matching
-      // The real product name goes on the listing form title later
-      await fillSlowly(sellBox, 'Spidermen punk');
+      // Dynamic catalog bypass: extract keywords from the actual product name
+      // Varies on every run to avoid behavioral fingerprinting
+      const searchTerm = (searchName && searchName.length > 3) ? getSearchKeywords(searchName) : 'cosplay prop';
+      sendLog(`[2/10] Search term: "${searchTerm}"`);
+      await fillSlowly(sellBox, searchTerm);
       await delay(500);
       try { await page.getByRole('button', { name: mp.searchBtn, exact: true }).click({ timeout: 5000 }); }
       catch (_) { try { await page.locator(`button:has-text("${mp.searchBtn}")`).first().click({ timeout: 3000, force: true }); } catch (__) { await page.keyboard.press('Enter'); } }
@@ -1000,7 +1045,10 @@ async function launchAutomationChrome(visible = chromeVisible) {
   else { sendLog(`[Session]: Creating new profile at ${userDataDir}.`); }
   sendLog(`[System]: Launching Chrome...`); sendBrowserStatus('connecting');
   try {
-    const shellCmd = `"${chromePath}" --remote-debugging-port=${CONFIG.CDP_PORT} --user-data-dir="${userDataDir}" --no-first-run --no-default-browser-check --no-sandbox${visible ? ' --start-maximized' : ' --headless=new --start-minimized'}`;
+    // NEVER use headless mode — it leaves detectible browser fingerprint artifacts
+    // Instead, position the window off-screen when "hidden" mode is requested
+    const winPos = visible ? ' --start-maximized' : ' --window-position=3000,3000 --window-size=1280,800';
+    const shellCmd = `"${chromePath}" --remote-debugging-port=${CONFIG.CDP_PORT} --user-data-dir="${userDataDir}" --no-first-run --no-default-browser-check --no-sandbox${winPos}`;
     const child = spawn(shellCmd, [], { shell: true, detached: true, stdio: 'ignore', windowsHide: !visible });
     child.unref();
     if (visible) { await delay(2500); bringChromeToFront(); await delay(1000); bringChromeToFront(); }
