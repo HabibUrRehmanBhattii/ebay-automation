@@ -973,7 +973,7 @@ async function runAutomationLoop() {
     while (isAutomationPaused && isAutomationRunning) await delay(250);
     if (!isAutomationRunning) break;
     try {
-      const ok = await processOneItem(item, uploadState, MAX_DAILY);
+      const ok = await processOneItem(item, uploadState);
       // Re-scan folder to refresh Published tab
       if (targetFolder) {
         const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
@@ -994,7 +994,7 @@ async function runAutomationLoop() {
         const start = Date.now();
         while (Date.now() - start < waitMs && isAutomationRunning) { if (isAutomationPaused) { await delay(250); continue; } await delay(500); }
       }
-    } catch (error) { sendLog(`[Error]: ${item.name} — ${error.message}`); const s = await loadSettings().catch(() => ({})); if (s.deepseekApiKey) await diagnoseErrorWithDeepSeek(s.deepseekApiKey, item.name, error.message); continue; }
+    } catch (error) { sendLog(`[Error]: ${item.name} — ${error.message}`); const s = await loadSettings().catch(() => ({})); if (s.openrouterApiKey) await diagnoseErrorWithDeepSeek(s.openrouterApiKey, item.name, error.message); continue; }
     await delay(650);
     if (!isAutomationRunning) break;
   }
