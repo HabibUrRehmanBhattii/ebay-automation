@@ -38,6 +38,9 @@ const aiToggle = $('ai-toggle');
 const aiToggleLabel = $('ai-toggle-label');
 const maxUploadsInput = $('max-uploads-input');
 const aiSortCheckbox = $('ai-sort-checkbox');
+const multiCheckbox = $('multi-checkbox');
+const multiPanel = $('multi-panel');
+const multiToggle = $('multi-toggle');
 const marketplaceSelect = $('marketplace-select');
 
 const imgModal = $('image-manager-modal');
