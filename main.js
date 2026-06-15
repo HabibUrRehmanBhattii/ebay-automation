@@ -1340,7 +1340,31 @@ ipcMain.handle('rename-folder', async (e, p) => {
 ipcMain.handle('open-folder', async (e, fp) => { try { await shell.openPath(fp); return true; } catch (_) { return false; } });
 ipcMain.handle('save-folder-customization', async (e, p) => { const { folderName, price, template } = p || {}; if (!folderName) return false; const c = await loadFolderCustomizations(); c[folderName] = { price, template }; return saveFolderCustomizations(c); });
 
-// ==================== DeepSeek ====================
+// ==================== OpenRouter API ====================
+ipcMain.handle('validate-openrouter-key', async (e, key) => {
+  if (!key) return { success: false, message: 'Key is empty.' };
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: 'Ping' }], max_tokens: 5 }) });
+    if (!r.ok) return { success: false, message: `HTTP ${r.status}` };
+    const d = await r.json();
+    if (d.choices?.[0]) { const s = await loadSettings(); s.openrouterApiKey = key; await saveSettings(s); return { success: true }; }
+    return { success: false, message: 'Invalid response.' };
+  } catch (err) { return { success: false, message: err.message }; }
+});
+ipcMain.handle('get-openrouter-key', async () => { try { return (await loadSettings()).openrouterApiKey || ''; } catch (_) { return ''; } });
+ipcMain.handle('bulk-openrouter-rewrite', async (e, names) => {
+  const s = await loadSettings();
+  if (!s.openrouterApiKey) return { success: false, message: 'No API key.' };
+  const results = {};
+  for (const n of names) results[n] = await generateDescriptionWithDeepSeek(s.openrouterApiKey, n);
+  return { success: true, results };
+});
+ipcMain.handle('set-max-daily', async (event, n) => { maxDailyUploads = parseInt(n) || 0; const s = await loadSettings(); s.maxDailyUploads = maxDailyUploads; await saveSettings(s); sendLog(`[System]: Upload limit: ${maxDailyUploads > 0 ? maxDailyUploads : 'unlimited'}.`); return true; });
+ipcMain.handle('get-max-daily', () => maxDailyUploads);
+ipcMain.handle('set-ai-photo-sort', async (event, v) => { aiPhotoSort = !!v; const s = await loadSettings(); s.aiPhotoSort = aiPhotoSort; await saveSettings(s); sendLog(`[System]: AI Photo Sort ${aiPhotoSort ? 'ON' : 'OFF'}.`); return true; });
+ipcMain.handle('get-ai-photo-sort', () => aiPhotoSort);
+
+// ==================== DeepSeek (legacy compat) ====================
 ipcMain.handle('validate-deepseek-key', async (e, key) => {
   if (!key) return { success: false, message: 'Key is empty.' };
   try {
