@@ -925,6 +925,45 @@ function setupControlButtons() {
     aiSortCheckbox.addEventListener('change', () => {
       window.api.setAiPhotoSort(aiSortCheckbox.checked);
     });
+
+  // Multi-post toggle + checkbox panel
+  if (multiToggle) {
+    multiToggle.addEventListener('click', (e) => {
+      if (e.target.id !== 'multi-checkbox' && multiCheckbox) {
+        multiCheckbox.checked = !multiCheckbox.checked;
+        multiCheckbox.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+  if (multiCheckbox) {
+    multiCheckbox.addEventListener('change', async () => {
+      const on = multiCheckbox.checked;
+      if (multiPanel) multiPanel.style.display = on ? 'block' : 'none';
+      await window.api.setMultiPost(on);
+      if (on) {
+        const cbs = document.querySelectorAll('.market-cb');
+        const selected = [];
+        cbs.forEach(cb => { if (cb.checked) selected.push(cb.value); });
+        if (selected.length) await window.api.setEnabledMarketplaces(selected);
+      }
+      addLog(`[System]: Multi-post ${on ? 'ON' : 'OFF'}.`, 'system');
+    });
+  }
+  document.querySelectorAll('.market-cb').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const all = document.querySelectorAll('.market-cb');
+      const selected = [];
+      all.forEach(c => { if (c.checked) selected.push(c.value); });
+      if (selected.length) await window.api.setEnabledMarketplaces(selected);
+    });
+  });
+  document.addEventListener('click', (e) => {
+    if (multiPanel && multiPanel.style.display === 'block' &&
+        !multiToggle.contains(e.target) && !multiPanel.contains(e.target)) {
+      multiPanel.style.display = 'none';
+    }
+  });
+
   }
 
   // Image Upload Modal Events

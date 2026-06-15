@@ -86,4 +86,8 @@ contextBridge.exposeInMainWorld('api', {
   getMarketplace: () => ipcRenderer.invoke('get-marketplace'),
   setMarketplace: (marketplace) => ipcRenderer.invoke('set-marketplace', marketplace),
   getMarketplacesList: () => ipcRenderer.invoke('get-marketplaces-list'),
+  setMultiPost: (v) => ipcRenderer.invoke('set-multi-post', v),
+  getMultiPost: () => ipcRenderer.invoke('get-multi-post'),
+  setEnabledMarketplaces: (list) => ipcRenderer.invoke('set-enabled-marketplaces', list),
+  getEnabledMarketplaces: () => ipcRenderer.invoke('get-enabled-marketplaces'),
 });

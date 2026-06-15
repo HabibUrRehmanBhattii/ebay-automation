@@ -113,6 +113,8 @@ let defaultTitleTemplate = '${name} - 3D Printed DIY Cosplay Kit';
 let aiEnabled = true;
 let maxDailyUploads = 0;
 let aiPhotoSort = false;
+let multiPostEnabled = false;
+let enabledMarketplaces = ['ebay.com'];
 
 let tray = null;
 let isQuitting = false;
@@ -984,43 +986,69 @@ async function runAutomationLoop() {
   isAutomationRunning = true; isAutomationPaused = false; sendStatusUpdate();
   const uploadState = { count: 0 };
   const items = currentQueue.filter(i => i.status === 'Pending');
+  const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];
+  sendLog(`[System]: Posting to ${markets.length} market(s): ${markets.join(', ')}`);
+
   for (const item of items) {
-    if (maxDailyUploads > 0 && uploadState.count >= maxDailyUploads) { sendLog(`[System]: DAILY LIMIT (${MAX_DAILY}). Stopping.`); break; }
+    if (maxDailyUploads > 0 && uploadState.count >= maxDailyUploads) { sendLog(`[System]: Upload limit reached (${maxDailyUploads}). Stopping.`); break; }
     while (isAutomationPaused && isAutomationRunning) await delay(250);
     if (!isAutomationRunning) break;
-    try {
-      const ok = await processOneItem(item, uploadState);
-      // Re-scan folder to refresh Published tab
-      if (targetFolder) {
-        const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
-        const allNames = (await fs.readdir(targetFolder, { withFileTypes: true })).filter(e => e.isDirectory()).map(d => d.name);
-        currentQueue = [];
-        for (const nm of allNames) {
-          const isP = processed.includes(nm);
-          const fp = path.join(targetFolder, nm);
-          const thumb = await findFirstImage(fp);
-          const c = customizations[nm] || {};
-          const rtpl = c.template || guessTemplateFromName(nm);
-          currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl });
-        }
-        sendQueueUpdate();
+
+    let itemOk = false;
+    for (const market of markets) {
+      if (maxDailyUploads > 0 && uploadState.count >= maxDailyUploads) break;
+      while (isAutomationPaused && isAutomationRunning) await delay(250);
+      if (!isAutomationRunning) break;
+
+      const prevMarket = currentMarketplace;
+      currentMarketplace = market;
+      if (markets.length > 1) sendLog(`[Multi] → ${market} (${item.name})`);
+
+      if (markets.length > 1 && market !== markets[0]) {
+        await delay(jitter(45000));
       }
-      if (ok && item !== items[items.length - 1] && isAutomationRunning) {
-        const waitMs = Math.floor(Math.random() * (CONFIG.MAX_POST_DELAY_MS - CONFIG.MIN_POST_DELAY_MS + 1)) + CONFIG.MIN_POST_DELAY_MS;
-        sendLog(`[System]: Resting ${(waitMs / 60000).toFixed(2)}min...`);
-        const start = Date.now();
-        while (Date.now() - start < waitMs && isAutomationRunning) { if (isAutomationPaused) { await delay(250); continue; } await delay(500); }
+
+      try {
+        const ok = await processOneItem(item, uploadState);
+        if (ok) itemOk = true;
+        currentMarketplace = prevMarket;
+      } catch (error) {
+        currentMarketplace = prevMarket;
+        sendLog(`[Error]: ${item.name} (${market}) — ${error.message}`);
+        const s = await loadSettings().catch(() => ({}));
+        if (s.openrouterApiKey) await diagnoseErrorWithDeepSeek(s.openrouterApiKey, item.name, error.message);
       }
-    } catch (error) { sendLog(`[Error]: ${item.name} — ${error.message}`); const s = await loadSettings().catch(() => ({})); if (s.openrouterApiKey) await diagnoseErrorWithDeepSeek(s.openrouterApiKey, item.name, error.message); continue; }
+    }
+
+    // Re-scan
+    if (targetFolder) {
+      const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
+      const allNames = (await fs.readdir(targetFolder, { withFileTypes: true })).filter(e => e.isDirectory()).map(d => d.name);
+      currentQueue = [];
+      for (const nm of allNames) {
+        const isP = processed.includes(nm);
+        const fp = path.join(targetFolder, nm);
+        const thumb = await findFirstImage(fp);
+        const c = customizations[nm] || {};
+        const rtpl = c.template || guessTemplateFromName(nm);
+        currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl });
+      }
+      sendQueueUpdate();
+    }
+    if (itemOk && item !== items[items.length - 1] && isAutomationRunning) {
+      const waitMs = Math.floor(Math.random() * (CONFIG.MAX_POST_DELAY_MS - CONFIG.MIN_POST_DELAY_MS + 1)) + CONFIG.MIN_POST_DELAY_MS;
+      sendLog(`[System]: Resting ${(waitMs / 60000).toFixed(2)}min...`);
+      const start = Date.now();
+      while (Date.now() - start < waitMs && isAutomationRunning) { if (isAutomationPaused) { await delay(250); continue; } await delay(500); }
+    }
     await delay(650);
     if (!isAutomationRunning) break;
   }
   if (!currentQueue.some(i => i.status === 'Pending') && isAutomationRunning) sendLog('[System]: All pending items completed!');
   isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate();
-  // Push final queue state and trigger a re-scan so Published tab refreshes
   sendQueueUpdate();
   await delay(500);
-  sendQueueUpdate(); // double-push to ensure renderer gets it over any stale scan
+  sendQueueUpdate();
 }
 
 ipcMain.handle('start-automation', async (event, payload) => {
@@ -1403,6 +1431,17 @@ ipcMain.handle('save-uploaded-images', async (e, { folderPath, images }) => {
   catch (err) { return { success: false, message: err.message }; }
 });
 
+ipcMain.handle('set-multi-post', async (event, v) => { multiPostEnabled = !!v; const s = await loadSettings(); s.multiPostEnabled = multiPostEnabled; await saveSettings(s); sendLog(`[System]: Multi-post ${multiPostEnabled ? 'ON' : 'OFF'}.`); return true; });
+ipcMain.handle('get-multi-post', () => multiPostEnabled);
+ipcMain.handle('set-enabled-marketplaces', async (event, list) => {
+  if (!list || !list.length) list = ['ebay.com'];
+  enabledMarketplaces = list.filter(k => EBAY_MARKETPLACES[k]);
+  const s = await loadSettings(); s.enabledMarketplaces = enabledMarketplaces; await saveSettings(s);
+  sendLog(`[System]: Active markets: ${enabledMarketplaces.join(', ')}`);
+  return true;
+});
+ipcMain.handle('get-enabled-marketplaces', () => enabledMarketplaces);
+
 // ==================== Window Controls ====================
 ipcMain.on('window-minimize', () => { if (mainWindow) mainWindow.minimize(); });
 ipcMain.on('window-maximize', () => { if (mainWindow) { mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); } });
@@ -1424,7 +1463,9 @@ app.whenReady().then(async () => {
   try { const s = await loadSettings(); if (s.ebayMarketplace && EBAY_MARKETPLACES[s.ebayMarketplace]) currentMarketplace = s.ebayMarketplace;
     if (s.maxDailyUploads != null) maxDailyUploads = s.maxDailyUploads;
     if (s.aiPhotoSort != null) aiPhotoSort = s.aiPhotoSort;
-    if (s.aiEnabled != null) aiEnabled = s.aiEnabled; } catch (_) {}
+    if (s.aiEnabled != null) aiEnabled = s.aiEnabled;
+    if (s.multiPostEnabled != null) multiPostEnabled = s.multiPostEnabled;
+    if (s.enabledMarketplaces != null) enabledMarketplaces = s.enabledMarketplaces; } catch (_) {}
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   await delay(1500);
