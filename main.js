@@ -53,7 +53,7 @@ const EBAY_MARKETPLACES = {
     weightLabel: /Gewicht eingeben in Kilogramm/i,
     lengthLabel: /Paketlänge eingeben in/i, widthLabel: /Paketbreite eingeben in/i, depthLabel: /Pakettiefe eingeben in/i,
     countryOriginLabel: /Herkunftsland/i, listItBtn: 'Artikel kostenlos einstellen', successHeading: /Ihr Angebot ist jetzt live/i,
-    skipSellerHub: true, sellSimilarLink: 'Helemet' },
+    skipSellerHub: true },
 'ebay.fr':     { domain: 'ebay.fr',     homeUrl: 'https://www.ebay.fr/',    locale: 'fr', currency: 'EUR', weightUnit: 'kg', dimUnit: 'cm',
     category: 'Ensembles et packs de jouets de construction complets', conditionLabel: 'Neuf', country: 'France', countrySearch: 'fran',
     searchBtn: 'Rechercher', createListingBtn: 'Créer une annonce', singleListingBtn: 'Annonce simple',
