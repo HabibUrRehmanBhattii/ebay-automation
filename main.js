@@ -291,19 +291,18 @@ async function loadTemplatesInternal() {
   try {
     const d = JSON.parse(await fs.readFile(templatesFile, 'utf8'));
     if (d && typeof d === 'object') {
-      // Merge in new template texts from code (overwrite disk cache)
+      // Always keep English labels in the disk cache. German labels merged dynamically.
       let changed = false;
       for (const key of Object.keys(defaultTemplates)) {
-        if (!d[key] || d[key].text !== defaultTemplates[key].text) {
-          d[key] = defaultTemplates[key];
+        if (!d[key] || d[key].label !== defaultTemplates[key].label || d[key].text !== defaultTemplates[key].text) {
+          d[key] = JSON.parse(JSON.stringify(defaultTemplates[key])); // deep clone
           changed = true;
         }
       }
-      // Also merge German templates into disk cache for ebay.de
-      for (const key of Object.keys(germanTemplates)) {
-        if (!d[key] || d[key].text !== germanTemplates[key].text) {
-          d[key] = germanTemplates[key];
-          changed = true;
+      // Remove any German-labelled entries from disk cache
+      for (const key of Object.keys(d)) {
+        if (!defaultTemplates[key] && germanTemplates[key]) {
+          delete d[key]; changed = true;
         }
       }
       if (changed) { await fs.writeFile(templatesFile, JSON.stringify(d, null, 2)).catch(() => {}); }
@@ -311,10 +310,8 @@ async function loadTemplatesInternal() {
     }
     return defaultTemplates;
   } catch {
-    const merged = { ...defaultTemplates };
-    for (const key of Object.keys(germanTemplates)) { merged[key] = germanTemplates[key]; }
-    try { await fs.writeFile(templatesFile, JSON.stringify(merged, null, 2)); } catch (_) {}
-    return merged;
+    try { await fs.writeFile(templatesFile, JSON.stringify(defaultTemplates, null, 2)); } catch (_) {}
+    return defaultTemplates;
   }
 }
 async function saveTemplatesInternal(t) { try { await fs.writeFile(templatesFile, JSON.stringify(t, null, 2)); return true; } catch (e) { return false; } }
@@ -1354,11 +1351,15 @@ ipcMain.handle('close-debug-browser', closeDebugBrowser);
 // ==================== Templates & Folder IPC ====================
 ipcMain.handle('load-templates', async () => {
   const tpls = await loadTemplatesInternal();
-  // Show German labels ONLY when the primary dropdown is ebay.de
+  // Show German labels AND text when primary dropdown is ebay.de
   if (currentMarketplace === 'ebay.de') {
-    const merged = { ...tpls };
-    for (const key of Object.keys(germanTemplates)) {
-      if (merged[key]) merged[key] = { ...merged[key], label: germanTemplates[key].label };
+    const merged = {};
+    for (const key of Object.keys(tpls)) {
+      merged[key] = { ...tpls[key] };
+      if (germanTemplates[key]) {
+        merged[key].label = germanTemplates[key].label;
+        merged[key].text = germanTemplates[key].text;
+      }
     }
     return merged;
   }
