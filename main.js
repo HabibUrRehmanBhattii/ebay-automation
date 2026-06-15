@@ -320,7 +320,8 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       const images = await getImagesInFolder(fullPath);
       const validity = getFolderValidity(dir.name, images.length);
       const custom = customizations[dir.name] || {};
-      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: custom.price, template: custom.template || guessTemplateFromName(dir.name) });
+      const tplAuto = custom.template || guessTemplateFromName(dir.name);
+      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto });
     }
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
     sendQueueUpdate(); return currentQueue;
@@ -572,7 +573,7 @@ async function generateDescriptionWithDeepSeek(apiKey, productName) {
 
 async function generateTitleWithDeepSeek(apiKey, folderName) {
   try {
-    const response = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: `Convert this raw folder name into a short, clean eBay listing title (max 80 chars): "${folderName}". Reply with only the title.` }], max_tokens: 40 }) });
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: `Convert this raw folder name into a short, clean eBay listing title (max 80 chars): "${folderName}". Reply with only the title.` }], max_tokens: 40 }) })
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     return data.choices?.[0]?.message?.content?.trim() || folderName;
@@ -581,7 +582,7 @@ async function generateTitleWithDeepSeek(apiKey, folderName) {
 
 async function diagnoseErrorWithDeepSeek(apiKey, itemName, errorMessage) {
   try {
-    const response = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: `My eBay listing automation failed on "${itemName}" with: "${errorMessage.substring(0, 300)}". In 1-2 sentences, what went wrong?` }], max_tokens: 80 }) });
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: `My eBay listing automation failed on "${itemName}" with: "${errorMessage.substring(0, 300)}". In 1-2 sentences, what went wrong?` }], max_tokens: 80 }) })
     if (!response.ok) return;
     const data = await response.json();
     const d = data.choices?.[0]?.message?.content?.trim();
@@ -598,7 +599,7 @@ const EBAY_CATEGORY_MAP = {
 async function selectEbayCategoryWithDeepSeek(apiKey, productName) {
   try {
     const cats = Object.keys(EBAY_CATEGORY_MAP).join(', ');
-    const response = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: `For an eBay listing titled "${productName}" (3D printed DIY cosplay kit), pick the single most fitting category: ${cats}. Reply with one word.` }], max_tokens: 10 }) });
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: `For an eBay listing titled "${productName}" (3D printed DIY cosplay kit), pick the single most fitting category: ${cats}. Reply with one word.` }], max_tokens: 10 }) })
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const raw = (await response.json()).choices?.[0]?.message?.content?.trim().toLowerCase() || '';
     for (const [key, regex] of Object.entries(EBAY_CATEGORY_MAP)) { if (raw.includes(key)) return regex; }
@@ -609,7 +610,7 @@ async function selectEbayCategoryWithDeepSeek(apiKey, productName) {
 // ====================================================================
 // ★ THE MAIN LISTING CREATION — based on real Playwright recording
 // ====================================================================
-async function createEbayListing({ searchName, title, description, price, imagePaths, titleTemplate, apiKey, uploadState = { count: 0 }, MAX_DAILY_UPLOADS = 15 }) {
+async function createEbayListing({ searchName, title, description, price, imagePaths, titleTemplate, apiKey, uploadState = { count: 0 } }) {
   const cdpEndpoints = [`http://127.0.0.1:${CONFIG.CDP_PORT}`, `http://localhost:${CONFIG.CDP_PORT}`];
   sendLog(`[Playwright]: Connecting...`);
 
@@ -923,7 +924,7 @@ function getDescriptionFromTemplate(templatesMap, templateKey, productName) {
   return desc;
 }
 
-async function processOneItem(item, uploadState = { count: 0 }, MAX_DAILY_UPLOADS = 15) {
+async function processOneItem(item, uploadState = { count: 0 }) {
   item.status = 'Processing'; sendQueueUpdate();
   sendLog(`[System]: === Starting workflow for "${item.name}" ===`);
   try {
@@ -1032,7 +1033,7 @@ ipcMain.handle('start-automation', async (event, payload) => {
   sendQueueUpdate();
   if (!currentQueue.filter(i => i.status === 'Pending').length) { sendLog('[System]: No pending items.'); return { success: false }; }
   const cdpReady = await ensureAutomationBrowserReady();
-  if (!cdpReady) { sendLog('[Error]: Chrome not ready on port 9223.'); isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate(); return { success: false, message: 'Chrome not ready' }; }
+  if (!cdpReady) { sendLog(`[Error]: Chrome not ready on port ${CONFIG.CDP_PORT}.`); isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate(); return { success: false, message: 'Chrome not ready' }; }
   sendLog(`[System]: Starting automation for ${currentQueue.filter(i => i.status === 'Pending').length} items.`);
   runAutomationLoop();
   return { success: true };
@@ -1227,7 +1228,7 @@ async function exportEbayCookies() {
   let browser = null;
   try {
     for (const ep of [`http://127.0.0.1:${CONFIG.CDP_PORT}`, `http://localhost:${CONFIG.CDP_PORT}`]) { try { browser = await chromium.connectOverCDP(ep); break; } catch (_) {} }
-    if (!browser) throw new Error('No Chrome on port 9223');
+    if (!browser) throw new Error(`No Chrome on port ${CONFIG.CDP_PORT}`);
     const ctx = browser.contexts().length > 0 ? browser.contexts()[0] : await browser.newContext();
     const allCookies = await ctx.cookies();
     const mp = getMarketplaceConfig();
@@ -1330,11 +1331,11 @@ ipcMain.handle('validate-deepseek-key', async (e, key) => {
     const r = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'Ping' }], max_tokens: 5 }) });
     if (!r.ok) return { success: false, message: `HTTP ${r.status}` };
     const d = await r.json();
-    if (d.choices?.[0]) { const s = await loadSettings(); s.deepseekApiKey = key; await saveSettings(s); return { success: true }; }
+    if (d.choices?.[0]) { const s = await loadSettings(); s.openrouterApiKey = key; await saveSettings(s); return { success: true }; }
     return { success: false, message: 'Invalid response.' };
   } catch (err) { return { success: false, message: err.message }; }
 });
-ipcMain.handle('get-deepseek-key', async () => { try { return (await loadSettings()).deepseekApiKey || ''; } catch (_) { return ''; } });
+ipcMain.handle('get-deepseek-key', async () => { try { return (await loadSettings()).openrouterApiKey || ''; } catch (_) { return ''; } });
 
 ipcMain.handle('get-marketplace', async () => currentMarketplace);
 ipcMain.handle('set-marketplace', async (event, marketplace) => {
@@ -1348,9 +1349,9 @@ ipcMain.handle('get-marketplaces-list', async () => Object.keys(EBAY_MARKETPLACE
 
 ipcMain.handle('bulk-deepseek-rewrite', async (e, names) => {
   const s = await loadSettings();
-  if (!s.deepseekApiKey) return { success: false, message: 'No API key.' };
+  if (!s.openrouterApiKey) return { success: false, message: 'No API key.' };
   const results = {};
-  for (const n of names) results[n] = await generateDescriptionWithDeepSeek(s.deepseekApiKey, n);
+  for (const n of names) results[n] = await generateDescriptionWithDeepSeek(s.openrouterApiKey, n);
   return { success: true, results };
 });
 ipcMain.handle('set-ai-enabled', async (e, v) => { aiEnabled = !!v; const s = await loadSettings(); s.aiEnabled = aiEnabled; await saveSettings(s); sendLog(`[System]: AI ${aiEnabled ? 'ON' : 'OFF'}.`); return true; });
@@ -1380,7 +1381,10 @@ app.on('before-quit', async () => {
 });
 
 app.whenReady().then(async () => {
-  try { const s = await loadSettings(); if (s.ebayMarketplace && EBAY_MARKETPLACES[s.ebayMarketplace]) currentMarketplace = s.ebayMarketplace; } catch (_) {}
+  try { const s = await loadSettings(); if (s.ebayMarketplace && EBAY_MARKETPLACES[s.ebayMarketplace]) currentMarketplace = s.ebayMarketplace;
+    if (s.maxDailyUploads != null) maxDailyUploads = s.maxDailyUploads;
+    if (s.aiPhotoSort != null) aiPhotoSort = s.aiPhotoSort;
+    if (s.aiEnabled != null) aiEnabled = s.aiEnabled; } catch (_) {}
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   await delay(1500);
