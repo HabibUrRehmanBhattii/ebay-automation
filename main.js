@@ -208,7 +208,7 @@ async function saveProcessed(list) { try { await fs.writeFile(processedFile, JSO
 const processedMarketsFile = path.join(app.getPath('userData'), 'processed_markets.json');
 async function loadMarkets() { try { return JSON.parse(await fs.readFile(processedMarketsFile, 'utf8')); } catch { return {}; } }
 async function saveMarkets(m) { try { await fs.writeFile(processedMarketsFile, JSON.stringify(m, null, 2)); } catch (_) {} }
-async function addMarketToFolder(name, mkt) { const m = await loadMarkets(); if (!m[name]) m[name] = []; if (!m[name].includes(mkt)) m[name].push(mkt); await saveMarkets(m); }
+async function addMarketToFolder(name, mkt) { const m = await loadMarkets(); if (!m[name]) m[name] = []; if (!m[name].includes(mkt)) m[name].push(mkt); await saveMarkets(m); sendLog(`[Markets]: "${name}" recorded on ${mkt} (total: ${m[name].join(', ')})`); }
 async function clearMarketsForFolder(name) { const m = await loadMarkets(); delete m[name]; await saveMarkets(m); }
 
 const folderCustomizationsFile = path.join(app.getPath('userData'), 'folder_customizations.json');
@@ -353,9 +353,17 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       const tplAuto = custom.template || guessTemplateFromName(dir.name);
       currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto, publishedMarkets: [] });
     }
-    const mktInfo = await loadMarkets(); for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = mktInfo[qi.name] || []; }
+    const mktInfo = await loadMarkets();
+    for (const qi of currentQueue) {
+      if (qi.status === 'Done' && mktInfo[qi.name]) {
+        qi.publishedMarkets = mktInfo[qi.name];
+      } else if (qi.status === 'Done' && !qi.publishedMarkets?.length) {
+        // Old published items without market data — guess from context
+        qi.publishedMarkets = [currentMarketplace];
+      }
+    }
     const doneWithMarkets = currentQueue.filter(q => q.status === 'Done' && q.publishedMarkets && q.publishedMarkets.length > 0);
-    if (doneWithMarkets.length > 0) sendLog(`[Markets]: ${doneWithMarkets.length} items have market data. Example: "${doneWithMarkets[0].name}" → ${doneWithMarkets[0].publishedMarkets.join(',')}`);
+    if (doneWithMarkets.length > 1) sendLog(`[Markets]: ${doneWithMarkets.length} items with badges. Example: "${doneWithMarkets[0].name}" → ${doneWithMarkets[0].publishedMarkets.join(',')}`);
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
     sendQueueUpdate(); return currentQueue;
   } catch (err) { sendLog(`[Error]: Could not read directory — ${err.message}`); return []; }
