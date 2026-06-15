@@ -1396,7 +1396,7 @@ ipcMain.handle('unzip-all', async (e) => {
       }
     }
     sendLog(`[Unzip All]: Extracted=${total}, Already done=${alreadyDone}, No zip=${noZip}`);
-    return { success: true, extracted: total, alreadyDone, hasImages, noZip };
+    return { success: true, extracted: total, alreadyDone, noZip };
   } catch (err) {
     sendLog(`[Unzip All Error]: ${err.message}`);
     return { success: false, message: err.message };
