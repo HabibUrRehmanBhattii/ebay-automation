@@ -398,20 +398,16 @@ async function ensureImagesExtracted(folderPath) {
 }
 
 async function forceExtractImagesFromZips(folderPath) {
+  const hasZip = await hasZipFileRecursive(folderPath);
+  if (!hasZip) return { success: false, message: 'No zip files found in folder' };
   const images = await getImagesInFolder(folderPath);
-  if (images.length <= 2 && await hasZipFileRecursive(folderPath)) {
-    sendLog(`[Unzip]: "${path.basename(folderPath)}" has ${images.length} image(s) and zip(s). Extracting...`);
-    await extractImagesFromZips(folderPath);
-    const flagFile = path.join(folderPath, '.extracted-imgs');
-    await fs.writeFile(flagFile, 'extracted', 'utf8');
-    const newCount = (await getImagesInFolder(folderPath)).length;
-    sendLog(`[Unzip]: Done. ${newCount} images now in folder.`);
-    return { success: true, newCount };
-  } else if (images.length > 1) {
-    return { success: true, message: `Already has ${images.length} images` };
-  } else {
-    return { success: false, message: 'No zip files found in folder' };
-  }
+  sendLog(`[Unzip]: "${path.basename(folderPath)}" has ${images.length} image(s) and zip(s). Extracting...`);
+  await extractImagesFromZips(folderPath);
+  const flagFile = path.join(folderPath, '.extracted-imgs');
+  await fs.writeFile(flagFile, 'extracted', 'utf8');
+  const newCount = (await getImagesInFolder(folderPath)).length;
+  sendLog(`[Unzip]: Done. ${newCount} images now in folder.`);
+  return { success: true, newCount };
 }
 
 ipcMain.handle('clean-folder-names', async (event, folderPath) => {
@@ -1352,18 +1348,16 @@ ipcMain.handle('unzip-folder', async (e, folderPath) => {
 // Bulk unzip: extract from ALL subfolders that have ≤1 image and contain zip files
 ipcMain.handle('unzip-all', async (e) => {
   if (!targetFolder) return { success: false, message: 'No folder selected' };
-  let total = 0, alreadyDone = 0, noZip = 0, hasImages = 0;
+  let total = 0, alreadyDone = 0, noZip = 0;
   sendLog(`[Unzip All]: Scanning subfolders for zips...`);
   try {
     const entries = await fs.readdir(targetFolder, { withFileTypes: true });
     const subdirs = entries.filter(d => d.isDirectory());
     for (const dir of subdirs) {
       const fp = path.join(targetFolder, dir.name);
+      // Nothing to check — always extract if zip exists, regardless of image count
       // Skip if already extracted (flag file exists)
       try { await fs.access(path.join(fp, '.extracted-imgs')); alreadyDone++; continue; } catch (_) {}
-      // Skip if folder already has 2+ images (no need to extract)
-      const images = await getImagesInFolder(fp);
-      if (images.length >= 3) { hasImages++; continue; }
       // Extract if has zip files
       if (await hasZipFileRecursive(fp)) {
         sendLog(`[Unzip All]: "${dir.name}"...`);
@@ -1374,7 +1368,7 @@ ipcMain.handle('unzip-all', async (e) => {
         noZip++;
       }
     }
-    sendLog(`[Unzip All]: Extracted=${total}, Already done=${alreadyDone}, Has images=${hasImages}, No zip=${noZip}`);
+    sendLog(`[Unzip All]: Extracted=${total}, Already done=${alreadyDone}, No zip=${noZip}`);
     return { success: true, extracted: total, alreadyDone, hasImages, noZip };
   } catch (err) {
     sendLog(`[Unzip All Error]: ${err.message}`);
