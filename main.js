@@ -354,6 +354,8 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto, publishedMarkets: [] });
     }
     const mktInfo = await loadMarkets(); for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = mktInfo[qi.name] || []; }
+    const doneWithMarkets = currentQueue.filter(q => q.status === 'Done' && q.publishedMarkets && q.publishedMarkets.length > 0);
+    if (doneWithMarkets.length > 0) sendLog(`[Markets]: ${doneWithMarkets.length} items have market data. Example: "${doneWithMarkets[0].name}" → ${doneWithMarkets[0].publishedMarkets.join(',')}`);
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
     sendQueueUpdate(); return currentQueue;
   } catch (err) { sendLog(`[Error]: Could not read directory — ${err.message}`); return []; }

@@ -295,10 +295,14 @@ function renderQueue() {
 
     const statusClass = `status-${item.status.toLowerCase()}`;
     let mktBadge = '';
-    if (item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.length) {
+    if (item.publishedMarkets && item.publishedMarkets.length) {
       mktBadge = ' ' + item.publishedMarkets.map(m => m === 'ebay.de' ? '🇩🇪' : m === 'ebay.ca' ? '🇨🇦' : '🌐').join('');
     }
-    const statusLabel = item.status === 'Review' ? `Review: ${item.errorReason}` : (item.status === 'Done' ? 'Done' + mktBadge : item.status);
+    let statusLabel;
+    if (item.status === 'Review') statusLabel = `Review: ${item.errorReason}`;
+    else if (item.status === 'Done') statusLabel = 'Done' + mktBadge;
+    else if (item.status === 'Failed') statusLabel = 'Failed: ' + (item.errorReason || '?');
+    else statusLabel = item.status + mktBadge;
 
     const isDeepSeekSelected = (item.template || guessTemplate(item.name)).toLowerCase() === 'deepseek' ? 'selected' : '';
     let optionsHTML = `
