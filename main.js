@@ -1115,8 +1115,23 @@ ipcMain.handle('run-single-item', async (event, payload) => {
   if (payload?.index != null && currentQueue[payload.index]) item = currentQueue[payload.index];
   if (!item || item.status !== 'Pending') return { success: false };
   if (item && payload) { if (payload.price != null) item.price = payload.price; if (payload.template != null) item.template = payload.template; }
-  sendLog(`[System]: Single-item: "${item.name}"`);
-  return { success: await processOneItem(item) };
+
+  // Multi-post: process to ALL enabled marketplaces
+  const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];
+  let ok = false;
+  for (const market of markets) {
+    const prevMarket = currentMarketplace;
+    currentMarketplace = market;
+    if (markets.length > 1) sendLog(`[Multi]: Single-item → ${market} (${item.name})`);
+    const result = await processOneItem(item);
+    if (result) ok = true;
+    currentMarketplace = prevMarket;
+    if (markets.length > 1 && market !== markets[markets.length - 1]) {
+      sendLog(`[Multi]: Waiting before next market...`);
+      await delay(jitter(30000));
+    }
+  }
+  return { success: ok };
 });
 
 ipcMain.handle('mark-item-done', async (event, payload) => {
