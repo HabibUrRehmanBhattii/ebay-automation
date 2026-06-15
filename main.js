@@ -223,9 +223,66 @@ function guessTemplateFromName(folderName) {
   return 'universal';
 }
 
+const germanTemplates = {
+  helmet: {
+    label: "Helm DIY (DE)",
+    text: `3D-gedrucktes DIY Cosplay Helm Kit - \${name}\n\nErwecke deinen Lieblingscharakter zum Leben mit diesem hochdetaillierten, 3D-gedruckten DIY Cosplay Helm Kit! Perfekt für Cosplayer, Bastler und Sammler.\n\nLieferumfang:\n- Hochwertige 3D-gedruckte Rohteile (unmontiert)\n- Gedruckt aus robustem PLA/PETG\n- Rohdruck: Muss geschliffen, grundiert und lackiert werden\n\nGröße:\n- Standard-Erwachsenengröße (ca. 56-61 cm Kopfumfang)\n\nWichtiger Hinweis: Dies ist ein DIY-Kit. Schleifen, Kleben und Lackieren sind erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  axe: {
+    label: "Axt DIY (DE)",
+    text: `3D-gedrucktes DIY Cosplay Axt Kit - \${name}\n\nFertige die ultimative Waffen-Requisite mit diesem Premium 3D-gedruckten DIY Cosplay Axt Kit!\n\nLieferumfang:\n- Premium 3D-gedruckte Rohteile (unmontiert)\n- Mit Ausrichtungshilfen für einfache Montage\n- Gedruckt aus robustem PLA/PETG\n\nWichtiger Hinweis: Die Teile kommen in kleineren Einzelteilen, die du selbst zusammenbauen und kleben musst.\n\nHinweis: Kleben, Schleifen und Lackieren sind erforderlich. Montagestab/-dübel nicht im Lieferumfang.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  sword: {
+    label: "Schwert DIY (DE)",
+    text: `3D-gedrucktes DIY Cosplay Schwert Kit - \${name}\n\nSchmiede deine eigene legendäre Klinge! Hochdetailliert und langlebig.\n\nLieferumfang:\n- 3D-gedruckte Rohteile (unmontiert)\n- Mit integrierten Kanälen für Verstärkungsstäbe\n- Gedruckt aus hochfestem PLA/PETG\n\nWichtiger Hinweis: Die Teile kommen in kleineren Einzelteilen, die du selbst zusammenbauen und kleben musst.\n\nHinweis: Schleifen, Kleben und individuelle Lackierung erforderlich. Verstärkungsstab nicht im Lieferumfang.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  armor: {
+    label: "Rüstung DIY (DE)",
+    text: `3D-gedrucktes DIY Cosplay Rüstungsset - \${name}\n\nVerbessere dein Cosplay mit diesem hochdetaillierten, 3D-gedruckten DIY Rüstungskit!\n\nLieferumfang:\n- 3D-gedruckte Rohteile (unmontiert und unlackiert)\n- Robustes PLA/PETG\n\nGröße: Standard-Erwachsenengröße. Kann maßgeschneidert werden.\n\nHinweis: Schleifen, Grundieren, Lackieren und Anbringen von Gurten erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  mask: {
+    label: "Maske (DE)",
+    text: `3D-gedruckte Cosplay Maske - \${name}\n\nHochdetaillierte, bildschirmgetreue 3D-gedruckte Cosplay Maske! Leicht und langlebig.\n\nMerkmale:\n- 3D-Rohdruck bereit für deine individuelle Veredelung\n- Gedruckt aus hochwertigem PLA/PETG\n\nHinweis: Dies ist ein DIY-Kit. Gurte, Polsterung und Lackierung werden vom Käufer angebracht.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  lifesize: {
+    label: "Lebensgroß (DE)",
+    text: `Lebensgroße 3D-gedruckte DIY Cosplay Requisite - \${name}\n\nEine unglaubliche 1:1 maßstabsgetreue Nachbildung! Perfekt für Sammlungen und Conventions.\n\nDetails:\n- Vollständiges 1:1 Modell in Lebensgröße\n- 3D-gedruckter Rohbausatz\n- Hochdetaillierte Oberflächen\n\nHinweis: Montage, Kleben, Schleifen und Lackieren erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
+  },
+  universal: {
+    label: "Universal (DE)",
+    text: `3D-gedrucktes DIY Cosplay Requisiten-Kit - \${name}\n\nPremium 3D-gedruckter DIY Nachbau. Ein fantastisches Projekt für jeden Cosplay-Enthusiasten, Bastler oder Gamer!\n\nLieferumfang:\n- Hochwertige 3D-gedruckte Rohteile\n- Robustes PLA/PETG Material\n- Unmontiert und unlackiert\n\nHinweis: Dies ist ein DIY-Kit. Schleifen, Montage (Kleben) und Lackierung sind erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
+  }
+};
+
 async function loadTemplatesInternal() {
-  try { const d = JSON.parse(await fs.readFile(templatesFile, 'utf8')); return (d && typeof d === 'object') ? d : defaultTemplates; }
-  catch { try { await fs.writeFile(templatesFile, JSON.stringify(defaultTemplates, null, 2)); } catch (_) {} return defaultTemplates; }
+  try {
+    const d = JSON.parse(await fs.readFile(templatesFile, 'utf8'));
+    if (d && typeof d === 'object') {
+      // Merge in new template texts from code (overwrite disk cache)
+      let changed = false;
+      for (const key of Object.keys(defaultTemplates)) {
+        if (!d[key] || d[key].text !== defaultTemplates[key].text) {
+          d[key] = defaultTemplates[key];
+          changed = true;
+        }
+      }
+      // Also merge German templates into disk cache for ebay.de
+      for (const key of Object.keys(germanTemplates)) {
+        if (!d[key] || d[key].text !== germanTemplates[key].text) {
+          d[key] = germanTemplates[key];
+          changed = true;
+        }
+      }
+      if (changed) { await fs.writeFile(templatesFile, JSON.stringify(d, null, 2)).catch(() => {}); }
+      return d;
+    }
+    return defaultTemplates;
+  } catch {
+    const merged = { ...defaultTemplates };
+    for (const key of Object.keys(germanTemplates)) { merged[key] = germanTemplates[key]; }
+    try { await fs.writeFile(templatesFile, JSON.stringify(merged, null, 2)); } catch (_) {}
+    return merged;
+  }
 }
 async function saveTemplatesInternal(t) { try { await fs.writeFile(templatesFile, JSON.stringify(t, null, 2)); return true; } catch (e) { return false; } }
 
@@ -795,36 +852,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
 // Process one item
 // ====================================================================
 // German locale templates (overrides default English templates for ebay.de)
-const germanTemplates = {
-  helmet: {
-    label: "Helm DIY (DE)",
-    text: `3D-gedrucktes DIY Cosplay Helm Kit - \${name}\n\nErwecke deinen Lieblingscharakter zum Leben mit diesem hochdetaillierten, 3D-gedruckten DIY Cosplay Helm Kit! Perfekt für Cosplayer, Bastler und Sammler.\n\nLieferumfang:\n- Hochwertige 3D-gedruckte Rohteile (unmontiert)\n- Gedruckt aus robustem PLA/PETG\n- Rohdruck: Muss geschliffen, grundiert und lackiert werden\n\nGröße:\n- Standard-Erwachsenengröße (ca. 56-61 cm Kopfumfang)\n\nWichtiger Hinweis: Dies ist ein DIY-Kit. Schleifen, Kleben und Lackieren sind erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  axe: {
-    label: "Axt DIY (DE)",
-    text: `3D-gedrucktes DIY Cosplay Axt Kit - \${name}\n\nFertige die ultimative Waffen-Requisite mit diesem Premium 3D-gedruckten DIY Cosplay Axt Kit!\n\nLieferumfang:\n- Premium 3D-gedruckte Rohteile (unmontiert)\n- Mit Ausrichtungshilfen für einfache Montage\n- Gedruckt aus robustem PLA/PETG\n\nWichtiger Hinweis: Die Teile kommen in kleineren Einzelteilen, die du selbst zusammenbauen und kleben musst.\n\nHinweis: Kleben, Schleifen und Lackieren sind erforderlich. Montagestab/-dübel nicht im Lieferumfang.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  sword: {
-    label: "Schwert DIY (DE)",
-    text: `3D-gedrucktes DIY Cosplay Schwert Kit - \${name}\n\nSchmiede deine eigene legendäre Klinge! Hochdetailliert und langlebig.\n\nLieferumfang:\n- 3D-gedruckte Rohteile (unmontiert)\n- Mit integrierten Kanälen für Verstärkungsstäbe\n- Gedruckt aus hochfestem PLA/PETG\n\nWichtiger Hinweis: Die Teile kommen in kleineren Einzelteilen, die du selbst zusammenbauen und kleben musst.\n\nHinweis: Schleifen, Kleben und individuelle Lackierung erforderlich. Verstärkungsstab nicht im Lieferumfang.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  armor: {
-    label: "Rüstung DIY (DE)",
-    text: `3D-gedrucktes DIY Cosplay Rüstungsset - \${name}\n\nVerbessere dein Cosplay mit diesem hochdetaillierten, 3D-gedruckten DIY Rüstungskit!\n\nLieferumfang:\n- 3D-gedruckte Rohteile (unmontiert und unlackiert)\n- Robustes PLA/PETG\n\nGröße: Standard-Erwachsenengröße. Kann maßgeschneidert werden.\n\nHinweis: Schleifen, Grundieren, Lackieren und Anbringen von Gurten erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  mask: {
-    label: "Maske (DE)",
-    text: `3D-gedruckte Cosplay Maske - \${name}\n\nHochdetaillierte, bildschirmgetreue 3D-gedruckte Cosplay Maske! Leicht und langlebig.\n\nMerkmale:\n- 3D-Rohdruck bereit für deine individuelle Veredelung\n- Gedruckt aus hochwertigem PLA/PETG\n\nHinweis: Dies ist ein DIY-Kit. Gurte, Polsterung und Lackierung werden vom Käufer angebracht.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  lifesize: {
-    label: "Lebensgroß (DE)",
-    text: `Lebensgroße 3D-gedruckte DIY Cosplay Requisite - \${name}\n\nEine unglaubliche 1:1 maßstabsgetreue Nachbildung! Perfekt für Sammlungen und Conventions.\n\nDetails:\n- Vollständiges 1:1 Modell in Lebensgröße\n- 3D-gedruckter Rohbausatz\n- Hochdetaillierte Oberflächen\n\nHinweis: Montage, Kleben, Schleifen und Lackieren erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
-  },
-  universal: {
-    label: "Universal (DE)",
-    text: `3D-gedrucktes DIY Cosplay Requisiten-Kit - \${name}\n\nPremium 3D-gedruckter DIY Nachbau. Ein fantastisches Projekt für jeden Cosplay-Enthusiasten, Bastler oder Gamer!\n\nLieferumfang:\n- Hochwertige 3D-gedruckte Rohteile\n- Robustes PLA/PETG Material\n- Unmontiert und unlackiert\n\nHinweis: Dies ist ein DIY-Kit. Schleifen, Montage (Kleben) und Lackierung sind erforderlich.\n\nVersand: innerhalb von 1-3 Wochen.`
-  }
-};
+
 
 function getDescriptionFromTemplate(templatesMap, templateKey, productName) {
   const mp = getMarketplaceConfig();
