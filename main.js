@@ -645,7 +645,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
 
     // ---- 1. Navigate to listing creation ----
     let sellSimilarUsed = false;
-    if (mp.skipSellerHub && mp.sellSimilarLink) {
+    if (mp.skipSellerHub || multiPostEnabled) {
       // PRIMARY: start from prelist, try Sell Similar on template listing first
       await page.goto(`https://www.${domain}/sl/prelist/suggest?sr=shstart`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await delay(4000);
@@ -663,7 +663,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
         sendLog(`[1/10] Sell Similar OK → form: ${page.url()}`);
       } catch (_) { sendLog('[1/10] Sell Similar unavailable — using prelist.'); }
     }
-    if (!mp.skipSellerHub) {
+    if (!mp.skipSellerHub && !multiPostEnabled) {
       await page.goto(`https://www.${domain}/sh/lst/active`, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await delay(4000);
       sendLog('[1/10] Create listing...');
