@@ -31,9 +31,13 @@ const bulkTemplateSelect = $('bulk-template-select');
 const bulkApplyBtn = $('bulk-apply-btn');
 const bulkCancelBtn = $('bulk-cancel-btn');
 const bulkSelectAll = $('bulk-select-all');
-const deepseekKeyInput = $('deepseek-key-input');
-const deepseekVerifyBtn = $('deepseek-verify-btn');
-const deepseekStatus = $('deepseek-status');
+const deepseekKeyInput = $('ai-key-input');
+const deepseekVerifyBtn = $('ai-verify-btn');
+const deepseekStatus = $('ai-status');
+const aiToggle = $('ai-toggle');
+const aiToggleLabel = $('ai-toggle-label');
+const maxUploadsInput = $('max-uploads-input');
+const aiSortCheckbox = $('ai-sort-checkbox');
 const marketplaceSelect = $('marketplace-select');
 
 const imgModal = $('image-manager-modal');
@@ -896,6 +900,30 @@ function setupControlButtons() {
         deepseekVerifyBtn.disabled = false;
         deepseekVerifyBtn.textContent = 'Verify';
       }
+    });
+  }
+
+  // AI toggle — turn all AI features ON/OFF (descriptions, titles, photo sort)
+  if (aiToggle) {
+    aiToggle.addEventListener('change', () => {
+      if (aiToggleLabel) aiToggleLabel.textContent = aiToggle.checked ? 'ON' : 'OFF';
+      if (aiSortCheckbox) aiSortCheckbox.disabled = !aiToggle.checked;
+      addLog(`[System]: AI ${aiToggle.checked ? 'ENABLED' : 'DISABLED'}.`, 'system');
+    });
+  }
+
+  // Max uploads
+  if (maxUploadsInput) {
+    maxUploadsInput.addEventListener('change', () => {
+      const val = parseInt(maxUploadsInput.value) || 0;
+      window.api.setMaxDaily(val);
+    });
+  }
+
+  // AI Sort toggle
+  if (aiSortCheckbox) {
+    aiSortCheckbox.addEventListener('change', () => {
+      window.api.setAiPhotoSort(aiSortCheckbox.checked);
     });
   }
 

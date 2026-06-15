@@ -110,6 +110,7 @@ let isAutomationPaused = false;
 let defaultPrice = 65;
 let targetFolder = null;
 let defaultTitleTemplate = '${name} - 3D Printed DIY Cosplay Kit';
+let aiEnabled = true; // global AI on/off toggle
 
 let tray = null;
 let isQuitting = false;
@@ -876,19 +877,24 @@ async function processOneItem(item, uploadState = { count: 0 }, MAX_DAILY_UPLOAD
     const imagePaths = await getImagesInFolder(item.fullPath);
     sendLog(`[Scanner]: Found ${imagePaths.length} image(s) in folder.`);
     const settings = await loadSettings();
-    const deepseekKey = settings.deepseekApiKey || null;
+    const apiKey = settings.openrouterApiKey || null;
+    // Respect AI toggle — skip all AI features when OFF
+    const useAI = aiEnabled && !!apiKey;
     let productName = item.name;
-    if (deepseekKey) productName = await generateTitleWithDeepSeek(deepseekKey, item.name);
+    if (useAI) productName = await generateTitleWithDeepSeek(apiKey, item.name);
     let description;
-    if (item.generatedDescription) { description = item.generatedDescription; }
+    if (item.generatedDescription && useAI) { description = item.generatedDescription; }
     else {
       const template = item.template || guessTemplateFromName(item.name);
       sendLog(`[System]: Auto-detected template "${template}" for "${item.name}".`);
-      if (template !== 'deepseek') { const tpls = await loadTemplatesInternal(); description = getDescriptionFromTemplate(tpls, template, productName); }
-      else { description = deepseekKey ? await generateDescriptionWithDeepSeek(deepseekKey, productName) : getDescriptionFromTemplate(await loadTemplatesInternal(), 'universal', productName); }
+      if (template !== 'deepseek' && template !== 'ai-realtime') {
+        const tpls = await loadTemplatesInternal(); description = getDescriptionFromTemplate(tpls, template, productName);
+      } else {
+        description = useAI ? await generateDescriptionWithDeepSeek(apiKey, productName) : getDescriptionFromTemplate(await loadTemplatesInternal(), 'universal', productName);
+      }
     }
     const priceToUse = (item.price != null) ? item.price : defaultPrice;
-    const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: deepseekKey, uploadState, MAX_DAILY_UPLOADS });
+    const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState, MAX_DAILY_UPLOADS });
     if (result.success) {
       item.status = 'Done';
       const processed = await loadProcessed();
@@ -1293,6 +1299,9 @@ ipcMain.handle('bulk-deepseek-rewrite', async (e, names) => {
   for (const n of names) results[n] = await generateDescriptionWithDeepSeek(s.deepseekApiKey, n);
   return { success: true, results };
 });
+ipcMain.handle('set-ai-enabled', async (e, v) => { aiEnabled = !!v; const s = await loadSettings(); s.aiEnabled = aiEnabled; await saveSettings(s); sendLog(`[System]: AI ${aiEnabled ? 'ON' : 'OFF'}.`); return true; });
+ipcMain.handle('get-ai-enabled', () => aiEnabled);
+
 ipcMain.handle('save-uploaded-images', async (e, { folderPath, images }) => {
   if (!folderPath || !images?.length) return { success: false, message: 'Missing params.' };
   try { await fs.mkdir(folderPath, { recursive: true }); for (const img of images) { const buf = Buffer.from(img.base64.replace(/^data:image\/\w+;base64,/, ''), 'base64'); await fs.writeFile(path.join(folderPath, img.name), buf); } return { success: true }; }

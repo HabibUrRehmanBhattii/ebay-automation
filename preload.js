@@ -69,10 +69,18 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // DeepSeek API and Drag-and-drop Image Upload
-  validateDeepSeekKey: (key) => ipcRenderer.invoke('validate-deepseek-key', key),
-  getDeepSeekKey: () => ipcRenderer.invoke('get-deepseek-key'),
-  bulkDeepSeekRewrite: (names) => ipcRenderer.invoke('bulk-deepseek-rewrite', names),
+  validateDeepSeekKey: (key) => ipcRenderer.invoke('validate-openrouter-key', key),
+  getDeepSeekKey: () => ipcRenderer.invoke('get-openrouter-key'),
+  bulkDeepSeekRewrite: (names) => ipcRenderer.invoke('bulk-openrouter-rewrite', names),
   saveUploadedImages: (folderPath, images) => ipcRenderer.invoke('save-uploaded-images', { folderPath, images }),
+
+  // AI controls
+  setAiEnabled: (v) => ipcRenderer.invoke('set-ai-enabled', v),
+  getAiEnabled: () => ipcRenderer.invoke('get-ai-enabled'),
+  setMaxDaily: (n) => ipcRenderer.invoke('set-max-daily', n),
+  getMaxDaily: () => ipcRenderer.invoke('get-max-daily'),
+  setAiPhotoSort: (v) => ipcRenderer.invoke('set-ai-photo-sort', v),
+  getAiPhotoSort: () => ipcRenderer.invoke('get-ai-photo-sort'),
 
   // eBay marketplace selection (.com / .ca / .de / .co.uk / etc.)
   getMarketplace: () => ipcRenderer.invoke('get-marketplace'),
