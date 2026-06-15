@@ -354,7 +354,7 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       const validity = getFolderValidity(dir.name, images.length);
       const custom = customizations[dir.name] || {};
       const tplAuto = custom.template || guessTemplateFromName(dir.name);
-      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto });
+      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto, publishedMarkets: [] });
     }
     const mktInfo = await loadMarkets(); for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = mktInfo[qi.name] || []; }
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
@@ -1050,7 +1050,7 @@ async function runAutomationLoop() {
         const thumb = await findFirstImage(fp);
         const c = customizations[nm] || {};
         const rtpl = c.template || guessTemplateFromName(nm);
-        currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl });
+        currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl, publishedMarkets: [] });
       }
       const reMarkets = await loadMarkets();
       for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
@@ -1093,7 +1093,7 @@ ipcMain.handle('start-automation', async (event, payload) => {
     const itemPrice = (lk?.price != null) ? lk.price : resolveItemPrice(c.price, itemTpl);
     const images = await getImagesInFolder(fp);
     const validity = getFolderValidity(name, images.length);
-    currentQueue.push({ name, fullPath: fp, status: isP ? 'Done' : validity.status, errorReason: isP ? null : validity.reason, thumb, price: itemPrice, template: itemTpl });
+    currentQueue.push({ name, fullPath: fp, status: isP ? 'Done' : validity.status, errorReason: isP ? null : validity.reason, thumb, price: itemPrice, template: itemTpl, publishedMarkets: [] });
   }
   const saMarkets = await loadMarkets();
   for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = saMarkets[qi.name] || []; }
@@ -1149,7 +1149,7 @@ ipcMain.handle('republish-item', async (event, payload) => {
     const images = await getImagesInFolder(fp);
     const validity = getFolderValidity(name, images.length);
     const c = (await loadFolderCustomizations())[name] || {};
-    item = { name, fullPath: fp, status: validity.status, errorReason: validity.reason, thumb, price: c.price, template: c.template || guessTemplateFromName(name) };
+    item = { name, fullPath: fp, status: validity.status, errorReason: validity.reason, thumb, price: c.price, template: c.template || guessTemplateFromName(name), publishedMarkets: [] };
     currentQueue.push(item);
   }
   if (item) {
