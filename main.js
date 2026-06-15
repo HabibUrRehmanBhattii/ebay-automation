@@ -315,13 +315,25 @@ async function ensureImagesExtracted(folderPath) {
   try {
     const flagFile = path.join(folderPath, '.extracted-imgs');
     try { await fs.access(flagFile); return; } catch {}
-    const images = await getImagesInFolder(folderPath);
-    if (images.length <= 1 && await hasZipFileRecursive(folderPath)) {
-      sendLog(`[Scanner]: Folder "${path.basename(folderPath)}" has ${images.length} image(s). Extracting from zip...`);
-      await extractImagesFromZips(folderPath);
-      await fs.writeFile(flagFile, 'extracted', 'utf8');
-    }
+    await forceExtractImagesFromZips(folderPath);
   } catch (_) {}
+}
+
+async function forceExtractImagesFromZips(folderPath) {
+  const images = await getImagesInFolder(folderPath);
+  if (images.length <= 1 && await hasZipFileRecursive(folderPath)) {
+    sendLog(`[Unzip]: "${path.basename(folderPath)}" has ${images.length} image(s) and zip(s). Extracting...`);
+    await extractImagesFromZips(folderPath);
+    const flagFile = path.join(folderPath, '.extracted-imgs');
+    await fs.writeFile(flagFile, 'extracted', 'utf8');
+    const newCount = (await getImagesInFolder(folderPath)).length;
+    sendLog(`[Unzip]: Done. ${newCount} images now in folder.`);
+    return { success: true, newCount };
+  } else if (images.length > 1) {
+    return { success: true, message: `Already has ${images.length} images` };
+  } else {
+    return { success: false, message: 'No zip files found in folder' };
+  }
 }
 
 ipcMain.handle('clean-folder-names', async (event, folderPath) => {
@@ -1192,6 +1204,12 @@ ipcMain.handle('load-templates', async () => {
   return tpls;
 });
 ipcMain.handle('save-templates', async (e, t) => saveTemplatesInternal(t));
+// Manual unzip: extract images from zip files in a folder
+ipcMain.handle('unzip-folder', async (e, folderPath) => {
+  if (!folderPath) return { success: false, message: 'No folder path' };
+  return await forceExtractImagesFromZips(folderPath);
+});
+
 ipcMain.handle('rename-folder', async (e, p) => {
   const { parentPath, oldName, newName } = p || {};
   if (!parentPath || !oldName || !newName) return { success: false, message: 'Invalid args' };
