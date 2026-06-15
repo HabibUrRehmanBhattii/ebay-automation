@@ -500,19 +500,21 @@ async function clickVisibleActionButton(page, label, options = {}) {
 
 // DeepSeek
 async function generateDescriptionWithDeepSeek(apiKey, productName) {
-  sendLog(`[DeepSeek]: Generating description for "${productName}" (locale: ${getMarketplaceConfig().locale})...`);
+  const mp = getMarketplaceConfig();
+  const isGerman = mp.locale === 'de' || currentMarketplace === 'ebay.de';
+  const lang = isGerman ? 'German' : mp.locale === 'fr' ? 'French' : mp.locale === 'it' ? 'Italian' : mp.locale === 'es' ? 'Spanish' : 'English';
+  sendLog(`[OpenRouter]: Generating ${lang} description for "${productName}"...`);
   try {
-    const mp=getMarketplaceConfig();
-    const lang=mp.locale==="de"?"German":mp.locale==="fr"?"French":mp.locale==="it"?"Italian":mp.locale==="es"?"Spanish":"English";
-    const prompt=`Write a high-converting, friendly, and details-rich eBay product description in ${lang} for: "${productName}".
-This is a raw 3D printed DIY cosplay prop/helmet kit. Use HTML formatting. Include a shipping section. Generate the entire response in ${lang} only.`;
-    const response = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{ role: 'user', content: prompt }] }) });
+    const prompt = isGerman
+      ? `Schreibe eine überzeugende, detaillierte eBay-Artikelbeschreibung auf Deutsch für: "${productName}". Dies ist ein roher 3D-gedruckter DIY Cosplay Bausatz (unmontiert, unlackiert, muss geschliffen und zusammengebaut werden). Verwende HTML-Formatierung. Füge einen Versand-Hinweis hinzu. Antworte NUR auf Deutsch.`
+      : `Write a high-converting, friendly, and details-rich eBay product description for: "${productName}". This is a raw 3D printed DIY cosplay prop/helmet kit. Use HTML formatting. Include a shipping section.`;
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: prompt }] }) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const d=await response.json();
-    const text=d.choices?.[0]?.message?.content?.trim()||`${productName} — Raw 3D printed DIY cosplay kit.`;
-    sendLog(`[DeepSeek]: Generated (${text.length} chars).`);
+    const d = await response.json();
+    const text = d.choices?.[0]?.message?.content?.trim() || (isGerman ? `${productName} — 3D-gedrucktes DIY Cosplay Kit.` : `${productName} — Raw 3D printed DIY cosplay kit.`);
+    sendLog(`[OpenRouter]: Generated ${lang} description (${text.length} chars).`);
     return text;
-  } catch (e) { sendLog(`[DeepSeek Error]: ${e.message}`); return `<p><b>${productName}</b> — Raw 3D printed DIY cosplay kit.</p>`; }
+  } catch (e) { sendLog(`[OpenRouter Error]: ${e.message}`); return isGerman ? `<p><b>${productName}</b> — 3D-gedrucktes DIY Cosplay Kit.</p>` : `<p><b>${productName}</b> — Raw 3D printed DIY cosplay kit.</p>`; }
 }
 
 async function generateTitleWithDeepSeek(apiKey, folderName) {
@@ -856,11 +858,14 @@ async function createEbayListing({ searchName, title, description, price, imageP
 
 function getDescriptionFromTemplate(templatesMap, templateKey, productName) {
   const mp = getMarketplaceConfig();
-  // Use German templates for ebay.de
-  const tplSource = (mp.locale === 'de' && germanTemplates[templateKey]) ? germanTemplates : templatesMap;
+  const isGerman = mp.locale === 'de' || currentMarketplace === 'ebay.de';
+  // Use German templates for ebay.de — check BOTH locale AND marketplace key
+  const tplSource = (isGerman && germanTemplates[templateKey]) ? germanTemplates : templatesMap;
   const tpl = tplSource[templateKey];
   if (!tpl || !tpl.text) return `3D Printed DIY Cosplay Prop Kit - ${productName}`;
-  return tpl.text.replace(/\$\{name\}/g, productName).replace(/\$\{productName\}/g, productName);
+  const desc = tpl.text.replace(/\$\{name\}/g, productName).replace(/\$\{productName\}/g, productName);
+  sendLog(`[Desc] locale=${mp.locale} market=${currentMarketplace} isGerman=${isGerman} tpl=${templateKey} → "${desc.substring(0, 50)}..."`);
+  return desc;
 }
 
 async function processOneItem(item, uploadState = { count: 0 }, MAX_DAILY_UPLOADS = 15) {
