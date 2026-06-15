@@ -36,7 +36,8 @@ const EBAY_MARKETPLACES = {
     continueWithoutMatch: /continue without match/i, continueToListing: 'Continue to listing',
     uploadBtn: /upload from computer/i, itemTitle: /item title/i, itemPrice: /item price/i, weightLabel: /enter weight in kilograms/i,
     lengthLabel: /enter package length/i, widthLabel: /enter package width/i, depthLabel: /enter package depth/i,
-    countryOriginLabel: /country of origin/i, listItBtn: 'List it', successHeading: /your listing is now live/i },
+    countryOriginLabel: /country of origin/i, listItBtn: 'List it', successHeading: /your listing is now live/i,
+    skipSellerHub: true, sellSimilarLink: 'Helemet' },
   'ebay.co.uk':  { domain: 'ebay.co.uk',  homeUrl: 'https://www.ebay.co.uk/', locale: 'en', currency: 'GBP', weightUnit: 'kg', dimUnit: 'cm',
     category: 'Building Toy Complete Sets & Packs', conditionLabel: 'New', country: 'United Kingdom', countrySearch: 'united',
     searchBtn: 'Search', createListingBtn: 'Create listing', singleListingBtn: 'Single listing',
@@ -84,7 +85,7 @@ const EBAY_MARKETPLACES = {
     countryOriginLabel: /país de origen/i, listItBtn: 'Publicar', successHeading: /tu anuncio ya está activo/i },
 };
 
-let currentMarketplace = 'ebay.com';
+let currentMarketplace = 'ebay.de';
 
 function getMarketplaceConfig() {
   return EBAY_MARKETPLACES[currentMarketplace] || EBAY_MARKETPLACES['ebay.com'];
