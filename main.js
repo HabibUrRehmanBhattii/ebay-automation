@@ -110,7 +110,9 @@ let isAutomationPaused = false;
 let defaultPrice = 65;
 let targetFolder = null;
 let defaultTitleTemplate = '${name} - 3D Printed DIY Cosplay Kit';
-let aiEnabled = true; // global AI on/off toggle
+let aiEnabled = true;
+let maxDailyUploads = 0;
+let aiPhotoSort = false;
 
 let tray = null;
 let isQuitting = false;
@@ -213,6 +215,20 @@ const defaultTemplates = {
 };
 
 // Auto-detect template from folder name using keyword matching
+// Default prices per template
+const templatePrices = {
+  helmet: 85, mask: 55, axe: 75, sword: 65, armor: 95, lifesize: 150, universal: 65,
+};
+
+function getPriceForTemplate(templateKey) {
+  return templatePrices[templateKey] || templatePrices.universal || 65;
+}
+
+function resolveItemPrice(customPrice, templateKey) {
+  if (customPrice != null) return customPrice;
+  return getPriceForTemplate(templateKey);
+}
+
 function guessTemplateFromName(folderName) {
   const n = folderName.toLowerCase();
   if (/\bhelmet\b|helemt|\bvisor\b|\bcrown\b|\bhood\b/.test(n))          return 'helmet';
@@ -949,7 +965,7 @@ async function processOneItem(item, uploadState = { count: 0 }) {
       }
     }
     const priceToUse = (item.price != null) ? item.price : defaultPrice;
-    const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState, MAX_DAILY_UPLOADS });
+    const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState });
     if (result.success) {
       item.status = 'Done';
       const processed = await loadProcessed();
@@ -957,7 +973,7 @@ async function processOneItem(item, uploadState = { count: 0 }) {
       sendLog(`[System]: "${item.name}" Done.`);
       return true;
     } else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
-  } catch (err) { item.status = 'Failed'; sendLog(`[Error]: ${err.message}`); throw err; }
+  } catch (err) { item.status = 'Failed'; item.errorReason = err.message; sendLog(`[Error]: ${err.message}`); return false; }
   finally { sendQueueUpdate(); }
 }
 
@@ -966,11 +982,10 @@ async function processOneItem(item, uploadState = { count: 0 }) {
 // ====================================================================
 async function runAutomationLoop() {
   isAutomationRunning = true; isAutomationPaused = false; sendStatusUpdate();
-  const MAX_DAILY = 15;
   const uploadState = { count: 0 };
   const items = currentQueue.filter(i => i.status === 'Pending');
   for (const item of items) {
-    if (uploadState.count >= MAX_DAILY) { sendLog(`[System]: DAILY LIMIT (${MAX_DAILY}). Stopping.`); break; }
+    if (maxDailyUploads > 0 && uploadState.count >= maxDailyUploads) { sendLog(`[System]: DAILY LIMIT (${MAX_DAILY}). Stopping.`); break; }
     while (isAutomationPaused && isAutomationRunning) await delay(250);
     if (!isAutomationRunning) break;
     try {
@@ -985,7 +1000,8 @@ async function runAutomationLoop() {
           const fp = path.join(targetFolder, nm);
           const thumb = await findFirstImage(fp);
           const c = customizations[nm] || {};
-          currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: c.price, template: c.template || guessTemplateFromName(nm) });
+          const rtpl = c.template || guessTemplateFromName(nm);
+          currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl });
         }
         sendQueueUpdate();
       }
@@ -1024,8 +1040,8 @@ ipcMain.handle('start-automation', async (event, payload) => {
     await ensureImagesExtracted(fp);
     const thumb = await findFirstImage(fp);
     const lk = lookup[name]; const c = customizations[name] || {};
-    const itemPrice = (lk?.price != null) ? lk.price : (c.price != null ? c.price : defaultPrice);
     const itemTpl = (lk?.template) ? lk.template : (c.template ? c.template : guessTemplateFromName(name));
+    const itemPrice = (lk?.price != null) ? lk.price : resolveItemPrice(c.price, itemTpl);
     const images = await getImagesInFolder(fp);
     const validity = getFolderValidity(name, images.length);
     currentQueue.push({ name, fullPath: fp, status: isP ? 'Done' : validity.status, errorReason: isP ? null : validity.reason, thumb, price: itemPrice, template: itemTpl });
@@ -1127,7 +1143,7 @@ function findChromeExecutable() { for (const c of CHROME_CANDIDATES) { if (requi
 
 function killBotChrome() {
   if (process.platform !== 'win32') return;
-  runPowerShell(`$profile = "C:\\ebay-automation-profile"; $port = 9223; Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CommandLine -and ($_.CommandLine -like "*$profile*" -or $_.CommandLine -like "*remote-debugging-port=$port*")) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }`);
+  runPowerShell(`$profile = "C:\\ebay-automation-profile"; $port = ${CONFIG.CDP_PORT}; Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CommandLine -and ($_.CommandLine -like "*$profile*" -or $_.CommandLine -like "*remote-debugging-port=$port*")) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }`);
 }
 
 function bringChromeToFront() {
