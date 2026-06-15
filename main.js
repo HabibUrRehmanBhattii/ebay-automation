@@ -1351,25 +1351,30 @@ ipcMain.handle('unzip-folder', async (e, folderPath) => {
 // Bulk unzip: extract from ALL subfolders that have ≤1 image and contain zip files
 ipcMain.handle('unzip-all', async (e) => {
   if (!targetFolder) return { success: false, message: 'No folder selected' };
-  let total = 0, skipped = 0;
+  let total = 0, alreadyDone = 0, noZip = 0, hasImages = 0;
   sendLog(`[Unzip All]: Scanning subfolders for zips...`);
   try {
     const entries = await fs.readdir(targetFolder, { withFileTypes: true });
     const subdirs = entries.filter(d => d.isDirectory());
     for (const dir of subdirs) {
       const fp = path.join(targetFolder, dir.name);
+      // Skip if already extracted (flag file exists)
+      try { await fs.access(path.join(fp, '.extracted-imgs')); alreadyDone++; continue; } catch (_) {}
+      // Skip if folder already has 2+ images (no need to extract)
       const images = await getImagesInFolder(fp);
-      if (images.length <= 1 && await hasZipFileRecursive(fp)) {
-        sendLog(`[Unzip All]: Extracting "${dir.name}"...`);
+      if (images.length >= 2) { hasImages++; continue; }
+      // Extract if has zip files
+      if (await hasZipFileRecursive(fp)) {
+        sendLog(`[Unzip All]: "${dir.name}"...`);
         await extractImagesFromZips(fp);
         await fs.writeFile(path.join(fp, '.extracted-imgs'), 'extracted', 'utf8');
         total++;
       } else {
-        skipped++;
+        noZip++;
       }
     }
-    sendLog(`[Unzip All]: Done. ${total} folders extracted, ${skipped} skipped.`);
-    return { success: true, extracted: total, skipped };
+    sendLog(`[Unzip All]: Extracted=${total}, Already done=${alreadyDone}, Has images=${hasImages}, No zip=${noZip}`);
+    return { success: true, extracted: total, alreadyDone, hasImages, noZip };
   } catch (err) {
     sendLog(`[Unzip All Error]: ${err.message}`);
     return { success: false, message: err.message };
