@@ -1354,37 +1354,14 @@ ipcMain.handle('close-debug-browser', closeDebugBrowser);
 // ==================== Templates & Folder IPC ====================
 ipcMain.handle('load-templates', async () => {
   const tpls = await loadTemplatesInternal();
-  // When multi-post is ON with DE+CA, or standalone ebay.de → show DE labels
-  // When ebay.ca only → show EN labels
-  const hasDE = currentMarketplace === 'ebay.de' || enabledMarketplaces.includes('ebay.de');
-  const hasCA = currentMarketplace === 'ebay.ca' || enabledMarketplaces.includes('ebay.ca');
-  const showDE = hasDE && (multiPostEnabled || currentMarketplace === 'ebay.de');
-
-  if (showDE) {
-    // Merge German labels for ebay.de templates
+  // Always merge German labels when ebay.de is in the mix (either as single market or multi-post)
+  const hasDG = currentMarketplace === 'ebay.de' || enabledMarketplaces.includes('ebay.de');
+  if (hasDG) {
     const merged = { ...tpls };
     for (const key of Object.keys(germanTemplates)) {
-      if (merged[key]) {
-        merged[key] = { ...merged[key], label: germanTemplates[key].label };
-      }
-    }
-    // If also ebay.ca is active, add context notes
-    if (hasCA && multiPostEnabled) {
-      for (const key of Object.keys(germanTemplates)) {
-        if (merged[key] && !merged[key].label.includes('(DE)')) {
-          merged[key] = { ...merged[key], label: germanTemplates[key].label + ' (DE)' };
-        }
-      }
+      if (merged[key]) merged[key] = { ...merged[key], label: germanTemplates[key].label };
     }
     return merged;
-  }
-  // ebay.ca only — show English labels
-  if (hasCA && !hasDE && multiPostEnabled) {
-    const ca = { ...tpls };
-    for (const key of Object.keys(defaultTemplates)) {
-      if (ca[key]) ca[key] = { ...ca[key], label: defaultTemplates[key].label };
-    }
-    return ca;
   }
   return tpls;
 });

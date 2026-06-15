@@ -980,14 +980,25 @@ function setupControlButtons() {
       addLog(`[System]: Multi-post ${on ? 'ON' : 'OFF'}.`, 'system');
     });
   }
+  // Update multi-label text based on checked markets
+  function updateMultiLabel() {
+    const label = document.getElementById('multi-label');
+    if (!label) return;
+    const cbs = document.querySelectorAll('.market-cb');
+    const sel = [];
+    cbs.forEach(c => { if (c.checked) sel.push(c.value === 'ebay.de' ? 'DE' : c.value === 'ebay.ca' ? 'CA' : c.value.split('.').pop()); });
+    label.textContent = sel.length ? sel.join('+') : 'off';
+  }
   document.querySelectorAll('.market-cb').forEach(cb => {
     cb.addEventListener('change', async () => {
+      updateMultiLabel();
       const all = document.querySelectorAll('.market-cb');
       const selected = [];
       all.forEach(c => { if (c.checked) selected.push(c.value); });
       if (selected.length) await window.api.setEnabledMarketplaces(selected);
     });
   });
+  updateMultiLabel(); // set initial value
   document.addEventListener('click', (e) => {
     if (multiPanel && multiPanel.style.display === 'block' &&
         !multiToggle.contains(e.target) && !multiPanel.contains(e.target)) {
