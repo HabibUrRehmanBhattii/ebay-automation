@@ -439,16 +439,34 @@ function getSearchKeywords(itemName) {
   return shuffled.slice(0, count).join(' ');
 }
 
-// Humanized mouse click: hover first with random offset, then click with micro-delay
+// Humanized mouse click: natural arc movement, hover, micro-delay
 async function humanClick(page, selector, opts = {}) {
   const el = typeof selector === 'string' ? page.locator(selector) : selector;
   try {
     const box = await el.boundingBox();
     if (box) {
-      const offsetX = randomBetween(-5, 5);
-      const offsetY = randomBetween(-3, 3);
-      await page.mouse.move(box.x + box.width / 2 + offsetX, box.y + box.height / 2 + offsetY, { steps: randomBetween(3, 8) });
-      await delay(randomBetween(80, 250));
+      // Start from random position on screen to simulate real mouse travel
+      const startX = randomBetween(100, 900);
+      const startY = randomBetween(100, 600);
+      await page.mouse.move(startX, startY, { steps: randomBetween(1, 3) });
+      await delay(randomBetween(30, 80));
+
+      // Move in a curved arc to the target (simulates human hand movement)
+      const endX = box.x + box.width / 2 + randomBetween(-4, 4);
+      const endY = box.y + box.height / 2 + randomBetween(-3, 3);
+      const steps = randomBetween(8, 20);
+      const ctrlX = (startX + endX) / 2 + randomBetween(-40, 40);
+      const ctrlY = (startY + endY) / 2 + randomBetween(-30, 30);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Quadratic Bézier curve
+        const x = (1-t)*(1-t)*startX + 2*(1-t)*t*ctrlX + t*t*endX;
+        const y = (1-t)*(1-t)*startY + 2*(1-t)*t*ctrlY + t*t*endY;
+        await page.mouse.move(Math.round(x), Math.round(y));
+        await delay(randomBetween(5, 15));
+      }
+      // Hover pause before click
+      await delay(randomBetween(60, 200));
     }
     await el.click({ timeout: opts.timeout || 10000, force: opts.force });
   } catch (_) {
@@ -456,16 +474,50 @@ async function humanClick(page, selector, opts = {}) {
   }
 }
 
-// Humanized type: types character by character with natural speed variation
+// Humanized type: variable speed, occasional typos with backspace correction
 async function humanType(page, selector, text) {
   const el = typeof selector === 'string' ? page.locator(selector) : selector;
-  await el.click();
+  await humanClick(page, el); // click with curve, not instant
   await delay(jitter(200));
   await el.press('ControlOrMeta+a');
   await delay(jitter(150));
-  for (const char of text) {
+
+  // Occasionally make a typo and correct it (5% chance per 20 chars)
+  let typoCounter = randomBetween(15, 30);
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    // Random pause mid-word (humans pause while thinking)
+    if (i > 0 && i % randomBetween(4, 8) === 0) {
+      await delay(randomBetween(200, 800));
+    }
+    // Occasional typo
+    if (i > 2 && i === typoCounter) {
+      const nearbyKey = String.fromCharCode(text.charCodeAt(i) + (Math.random() > 0.5 ? 1 : -1));
+      await el.press(nearbyKey);
+      await delay(randomBetween(100, 250));
+      await el.press('Backspace');
+      await delay(randomBetween(50, 120));
+      typoCounter = i + randomBetween(15, 30);
+    }
     await el.press(char);
-    await delay(randomBetween(30, 120));
+    await delay(randomBetween(25, 110));
+  }
+}
+
+// Natural human pause — random scrolling, idle mouse movements, reading time
+async function naturalPause(page, minMs = 2000, maxMs = 6000) {
+  const duration = randomBetween(minMs, maxMs);
+  const start = Date.now();
+  while (Date.now() - start < duration) {
+    const action = Math.random();
+    if (action < 0.3) {
+      // Scroll slightly
+      await page.mouse.wheel(0, randomBetween(-50, 100));
+    } else if (action < 0.5) {
+      // Idle mouse movement
+      await page.mouse.move(randomBetween(200, 1000), randomBetween(200, 600), { steps: randomBetween(2, 6) });
+    }
+    await delay(randomBetween(200, 600));
   }
 }
 
@@ -745,6 +797,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
         await fileInput.waitFor({ state: 'attached', timeout: 10000 });
         await fileInput.setInputFiles(imgs, { timeout: 30000 });
         sendLog('[7/10] Photos uploaded.');
+        await naturalPause(page, 2000, 4000);
         await delay(5000);
       } catch (e) { sendLog(`[Warn] Photos: ${e.message}`); }
     }
@@ -780,6 +833,7 @@ async function createEbayListing({ searchName, title, description, price, imageP
       await db.clear();
       await db.fill(description);
       sendLog('[Desc] filled.');
+      await naturalPause(page, 1500, 3500);
     } catch (e) { sendLog(`[Warn] Desc: ${e.message}`); }
 
     // Price
