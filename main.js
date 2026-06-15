@@ -999,6 +999,8 @@ async function processOneItem(item, uploadState = { count: 0 }) {
       if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
       sendLog(`[System]: "${item.name}" Done on ${currentMarketplace}.`);
       await addMarketToFolder(item.name, currentMarketplace);
+      item.publishedMarkets = (await loadMarkets())[item.name] || [];
+      sendQueueUpdate();
       return true;
     } else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
   } catch (err) { item.status = 'Failed'; item.errorReason = err.message; sendLog(`[Error]: ${err.message}`); return false; }
@@ -1046,6 +1048,7 @@ async function runAutomationLoop() {
       }
     }
 
+    await delay(500); // let disk writes from processOneItem flush
     // Re-scan
     if (targetFolder) {
       const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
@@ -1062,6 +1065,8 @@ async function runAutomationLoop() {
       const reMarkets = await loadMarkets();
       for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
       sendQueueUpdate();
+      await delay(200);
+      sendQueueUpdate(); // ensure renderer gets updated queue
     }
     if (itemOk && item !== items[items.length - 1] && isAutomationRunning) {
       const waitMs = Math.floor(Math.random() * (CONFIG.MAX_POST_DELAY_MS - CONFIG.MIN_POST_DELAY_MS + 1)) + CONFIG.MIN_POST_DELAY_MS;
