@@ -320,7 +320,7 @@ function renderQueue() {
         <button class="btn btn-success row-btn" data-action="done" data-index="${index}">Done</button>
       `;
     } else if (item.status === 'Review') {
-      if (item.errorReason === 'No Images') {
+      if (item.errorReason && item.errorReason.includes('Image')) {
         actionsHTML = `
           <button class="btn btn-primary row-btn" data-action="upload-imgs" data-index="${index}">📸 Upload</button>
           <button class="btn btn-secondary row-btn" data-action="unzip" data-index="${index}">📦 Unzip</button>

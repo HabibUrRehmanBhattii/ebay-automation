@@ -314,7 +314,8 @@ ipcMain.handle('select-folder', async () => {
 ipcMain.handle('get-last-folder', async () => { try { const s = await loadSettings(); if (s.lastFolder) { try { await fs.access(s.lastFolder); return s.lastFolder; } catch (_) {} } } catch (_) {} return null; });
 
 function getFolderValidity(name, imageCount) {
-  if (imageCount === 0) return { valid: false, status: 'Review', reason: 'No Images' };
+  if (imageCount === 0) return { valid: false, status: 'Review', reason: '0 Images' };
+  if (imageCount === 1) return { valid: false, status: 'Review', reason: '1 Image' };
   if (/^item_/i.test(name)) return { valid: false, status: 'Review', reason: 'Generic Name' };
   if (/\s\(\d+\)$/.test(name)) return { valid: false, status: 'Review', reason: 'Duplicate' };
   return { valid: true, status: 'Pending', reason: null };
@@ -398,7 +399,7 @@ async function ensureImagesExtracted(folderPath) {
 
 async function forceExtractImagesFromZips(folderPath) {
   const images = await getImagesInFolder(folderPath);
-  if (images.length <= 1 && await hasZipFileRecursive(folderPath)) {
+  if (images.length <= 2 && await hasZipFileRecursive(folderPath)) {
     sendLog(`[Unzip]: "${path.basename(folderPath)}" has ${images.length} image(s) and zip(s). Extracting...`);
     await extractImagesFromZips(folderPath);
     const flagFile = path.join(folderPath, '.extracted-imgs');
@@ -1362,7 +1363,7 @@ ipcMain.handle('unzip-all', async (e) => {
       try { await fs.access(path.join(fp, '.extracted-imgs')); alreadyDone++; continue; } catch (_) {}
       // Skip if folder already has 2+ images (no need to extract)
       const images = await getImagesInFolder(fp);
-      if (images.length >= 2) { hasImages++; continue; }
+      if (images.length >= 3) { hasImages++; continue; }
       // Extract if has zip files
       if (await hasZipFileRecursive(fp)) {
         sendLog(`[Unzip All]: "${dir.name}"...`);
