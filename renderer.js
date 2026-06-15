@@ -1087,7 +1087,7 @@ function setupControlButtons() {
         addLog(`[Unzip All Error]: ${err.message}`, 'system');
       }
       unzipAllBtn.disabled = false;
-      unzipAllBtn.textContent = '📦 Unzip All';
+      unzipAllBtn.textContent = '📸 Extract Photos';
     });
   }
 
