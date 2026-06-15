@@ -320,6 +320,7 @@ function renderQueue() {
       if (item.errorReason === 'No Images') {
         actionsHTML = `
           <button class="btn btn-primary row-btn" data-action="upload-imgs" data-index="${index}">📸 Upload</button>
+          <button class="btn btn-secondary row-btn" data-action="unzip" data-index="${index}">📦 Unzip</button>
           <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
           <button class="btn btn-success row-btn" data-action="done" data-index="${index}">Done</button>
         `;
@@ -493,6 +494,29 @@ function renderQueue() {
     if (openDirBtn) {
       openDirBtn.addEventListener('click', async () => {
         await window.api.openFolder(item.fullPath);
+      });
+    }
+
+    // Unzip handler — extract images from zip files inside this folder
+    const unzipBtn = row.querySelector('[data-action="unzip"]');
+    if (unzipBtn) {
+      unzipBtn.addEventListener('click', async () => {
+        unzipBtn.disabled = true;
+        unzipBtn.textContent = '...';
+        addLog(`[Unzip]: Extracting from "${item.name}"...`, 'system');
+        try {
+          const res = await window.api.unzipFolder(item.fullPath);
+          if (res && res.success) {
+            addLog(`[Unzip]: ${res.newCount ? res.newCount + ' images extracted.' : res.message}`, 'system');
+            await scanCurrentFolder();
+          } else {
+            addLog(`[Unzip]: ${res?.message || 'Failed'}`, 'system');
+          }
+        } catch (err) {
+          addLog(`[Unzip Error]: ${err.message}`, 'system');
+        }
+        unzipBtn.disabled = false;
+        unzipBtn.textContent = '📦 Unzip';
       });
     }
 
