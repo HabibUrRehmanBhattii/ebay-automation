@@ -204,6 +204,13 @@ const processedFile = path.join(app.getPath('userData'), 'processed.json');
 async function loadProcessed() { try { const d = JSON.parse(await fs.readFile(processedFile, 'utf8')); return Array.isArray(d.processed) ? d.processed : []; } catch { return []; } }
 async function saveProcessed(list) { try { await fs.writeFile(processedFile, JSON.stringify({ processed: list }, null, 2)); } catch (e) { sendLog(`[Error]: processed.json — ${e.message}`); } }
 
+// Market tracking — which marketplace each folder was published to
+const processedMarketsFile = path.join(app.getPath('userData'), 'processed_markets.json');
+async function loadMarkets() { try { return JSON.parse(await fs.readFile(processedMarketsFile, 'utf8')); } catch { return {}; } }
+async function saveMarkets(m) { try { await fs.writeFile(processedMarketsFile, JSON.stringify(m, null, 2)); } catch (_) {} }
+async function addMarketToFolder(name, mkt) { const m = await loadMarkets(); if (!m[name]) m[name] = []; if (!m[name].includes(mkt)) m[name].push(mkt); await saveMarkets(m); }
+async function clearMarketsForFolder(name) { const m = await loadMarkets(); delete m[name]; await saveMarkets(m); }
+
 const folderCustomizationsFile = path.join(app.getPath('userData'), 'folder_customizations.json');
 async function loadFolderCustomizations() { try { return JSON.parse(await fs.readFile(folderCustomizationsFile, 'utf8')); } catch { return {}; } }
 async function saveFolderCustomizations(c) { try { await fs.writeFile(folderCustomizationsFile, JSON.stringify(c, null, 2), 'utf8'); return true; } catch (e) { return false; } }
@@ -349,6 +356,7 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       const tplAuto = custom.template || guessTemplateFromName(dir.name);
       currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto });
     }
+    const mktInfo = await loadMarkets(); for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = mktInfo[qi.name] || []; }
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
     sendQueueUpdate(); return currentQueue;
   } catch (err) { sendLog(`[Error]: Could not read directory — ${err.message}`); return []; }
@@ -982,7 +990,8 @@ async function processOneItem(item, uploadState = { count: 0 }) {
       item.status = 'Done';
       const processed = await loadProcessed();
       if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
-      sendLog(`[System]: "${item.name}" Done.`);
+      sendLog(`[System]: "${item.name}" Done on ${currentMarketplace}.`);
+      await addMarketToFolder(item.name, currentMarketplace);
       return true;
     } else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
   } catch (err) { item.status = 'Failed'; item.errorReason = err.message; sendLog(`[Error]: ${err.message}`); return false; }
@@ -1043,6 +1052,8 @@ async function runAutomationLoop() {
         const rtpl = c.template || guessTemplateFromName(nm);
         currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl });
       }
+      const reMarkets = await loadMarkets();
+      for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
       sendQueueUpdate();
     }
     if (itemOk && item !== items[items.length - 1] && isAutomationRunning) {
@@ -1084,6 +1095,8 @@ ipcMain.handle('start-automation', async (event, payload) => {
     const validity = getFolderValidity(name, images.length);
     currentQueue.push({ name, fullPath: fp, status: isP ? 'Done' : validity.status, errorReason: isP ? null : validity.reason, thumb, price: itemPrice, template: itemTpl });
   }
+  const saMarkets = await loadMarkets();
+  for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = saMarkets[qi.name] || []; }
   sendQueueUpdate();
   if (!currentQueue.filter(i => i.status === 'Pending').length) { sendLog('[System]: No pending items.'); return { success: false }; }
   const cdpReady = await ensureAutomationBrowserReady();
@@ -1127,7 +1140,7 @@ ipcMain.handle('republish-item', async (event, payload) => {
   if (!name) return { success: false, message: 'No name' };
   const processed = await loadProcessed();
   const idx = processed.indexOf(name);
-  if (idx !== -1) { processed.splice(idx, 1); await saveProcessed(processed); }
+  if (idx !== -1) { processed.splice(idx, 1); await saveProcessed(processed); await clearMarketsForFolder(name); }
   let item = currentQueue.find(i => i.name === name);
   if (!item && targetFolder) {
     const fp = path.join(targetFolder, name);
@@ -1156,12 +1169,14 @@ ipcMain.handle('unmark-item', async (event, payload) => {
   if (!name) return { success: false, message: 'No name' };
   const processed = await loadProcessed();
   const idx = processed.indexOf(name);
-  if (idx !== -1) { processed.splice(idx, 1); await saveProcessed(processed); }
+  if (idx !== -1) { processed.splice(idx, 1); await saveProcessed(processed); await clearMarketsForFolder(name); }
   let item = currentQueue.find(i => i.name === name);
   if (item) {
     item.status = 'Pending';
     item.errorReason = null;
+    item.publishedMarkets = [];
     sendQueueUpdate();
+    await clearMarketsForFolder(name);
     sendLog(`[System]: "${name}" moved back to product queue.`);
   }
   return { success: true, name };

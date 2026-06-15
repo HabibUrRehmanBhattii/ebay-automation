@@ -294,7 +294,11 @@ function renderQueue() {
       : `<span style="font-size:18px;opacity:.7;">🖼️</span>`;
 
     const statusClass = `status-${item.status.toLowerCase()}`;
-    const statusLabel = item.status === 'Review' ? `Review: ${item.errorReason}` : (item.status === 'Done' ? 'Published' : item.status);
+    let mktBadge = '';
+    if (item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.length) {
+      mktBadge = ' ' + item.publishedMarkets.map(m => m === 'ebay.de' ? '🇩🇪' : m === 'ebay.ca' ? '🇨🇦' : '🌐').join('');
+    }
+    const statusLabel = item.status === 'Review' ? `Review: ${item.errorReason}` : (item.status === 'Done' ? 'Done' + mktBadge : item.status);
 
     const isDeepSeekSelected = (item.template || guessTemplate(item.name)).toLowerCase() === 'deepseek' ? 'selected' : '';
     let optionsHTML = `
