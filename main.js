@@ -1354,9 +1354,8 @@ ipcMain.handle('close-debug-browser', closeDebugBrowser);
 // ==================== Templates & Folder IPC ====================
 ipcMain.handle('load-templates', async () => {
   const tpls = await loadTemplatesInternal();
-  // Always merge German labels when ebay.de is in the mix (either as single market or multi-post)
-  const hasDG = currentMarketplace === 'ebay.de' || enabledMarketplaces.includes('ebay.de');
-  if (hasDG) {
+  // Show German labels ONLY when the primary dropdown is ebay.de
+  if (currentMarketplace === 'ebay.de') {
     const merged = { ...tpls };
     for (const key of Object.keys(germanTemplates)) {
       if (merged[key]) merged[key] = { ...merged[key], label: germanTemplates[key].label };

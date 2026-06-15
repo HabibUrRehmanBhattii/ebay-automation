@@ -977,6 +977,9 @@ function setupControlButtons() {
         cbs.forEach(cb => { if (cb.checked) selected.push(cb.value); });
         if (selected.length) await window.api.setEnabledMarketplaces(selected);
       }
+      updateMultiLabel();
+      await fetchTemplates();
+      renderQueue();
       addLog(`[System]: Multi-post ${on ? 'ON' : 'OFF'}.`, 'system');
     });
   }
