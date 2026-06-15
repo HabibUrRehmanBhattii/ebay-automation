@@ -177,8 +177,14 @@ function sendBrowserStatus(status = null) {
 async function findFirstImage(folderPath) {
   try {
     const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    // Prefer images first
     for (const entry of entries) {
       if (entry.isFile() && ['.jpg','.jpeg','.png','.webp','.gif'].includes(path.extname(entry.name).toLowerCase()))
+        return path.join(folderPath, entry.name);
+    }
+    // Fallback to video
+    for (const entry of entries) {
+      if (entry.isFile() && ['.mp4','.mov','.avi','.webm'].includes(path.extname(entry.name).toLowerCase()))
         return path.join(folderPath, entry.name);
     }
   } catch (_) {}
@@ -188,7 +194,7 @@ async function findFirstImage(folderPath) {
 async function getImagesInFolder(folderPath) {
   try {
     const entries = await fs.readdir(folderPath, { withFileTypes: true });
-    return entries.filter(e => e.isFile()).map(e => path.join(folderPath, e.name)).filter(p => /\.(jpe?g|png|webp|gif)$/i.test(p));
+    return entries.filter(e => e.isFile()).map(e => path.join(folderPath, e.name)).filter(p => /\.(jpe?g|png|webp|gif|mp4|mov|avi|webm)$/i.test(p));
   } catch (_) { return []; }
 }
 
@@ -385,7 +391,7 @@ async function runPowerShellAsync(scriptContent) {
 async function extractImagesFromZips(folderPath) {
   if (process.platform !== 'win32') return;
   const escapedPath = folderPath.replace(/'/g, "''");
-  const script = `Add-Type -AssemblyName System.IO.Compression.FileSystem\n$parentDir = '${escapedPath}'\n$zips = Get-ChildItem -Path $parentDir -Filter *.zip -File -Recurse\nforeach ($zipFile in $zips) {\n    try {\n        $extractDir = Split-Path -Parent $zipFile.FullName\n        $zip = [System.IO.Compression.ZipFile]::OpenRead($zipFile.FullName)\n        foreach ($entry in $zip.Entries) {\n            if ($entry.FullName -match '\\.(jpe?g|png|webp|gif)$') {\n                $entryName = $entry.Name\n                if ($entryName) {\n                    $targetPath = Join-Path $extractDir $entryName\n                    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $targetPath, $true)\n                }\n            }\n        }\n        $zip.Dispose()\n    } catch {}\n}\n`;
+  const script = `Add-Type -AssemblyName System.IO.Compression.FileSystem\n$parentDir = '${escapedPath}'\n$zips = Get-ChildItem -Path $parentDir -Filter *.zip -File -Recurse\nforeach ($zipFile in $zips) {\n    try {\n        $extractDir = Split-Path -Parent $zipFile.FullName\n        $zip = [System.IO.Compression.ZipFile]::OpenRead($zipFile.FullName)\n        foreach ($entry in $zip.Entries) {\n            if ($entry.FullName -match '\\.(jpe?g|png|webp|gif|mp4|mov|avi|webm)$') {\n                $entryName = $entry.Name\n                if ($entryName) {\n                    $targetPath = Join-Path $extractDir $entryName\n                    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $targetPath, $true)\n                }\n            }\n        }\n        $zip.Dispose()\n    } catch {}\n}\n`;
   await runPowerShellAsync(script);
 }
 
@@ -806,7 +812,13 @@ async function createEbayListing({ searchName, title, description, price, imageP
     // Photos — use hidden file input directly, NEVER click upload button (avoids native file picker)
     if (imagePaths && imagePaths.length > 0) {
       try {
-        const imgs = [...imagePaths].sort().slice(0, 12);
+        // Sort: images first, then videos. eBay allows 12 photos but videos count too
+        const isImg = p => /\.(jpe?g|png|webp|gif)$/i.test(p);
+        const imgs = [...imagePaths].sort((a, b) => {
+          const aImg = isImg(a) ? 0 : 1;
+          const bImg = isImg(b) ? 0 : 1;
+          return aImg - bImg || a.localeCompare(b);
+        }).slice(0, 12);
         sendLog(`[7/10] ${imgs.length} photos...`);
         // Go directly to the hidden <input type="file"> — clicking the upload button opens a native dialog
         const fileInput = page.locator('input[type="file"]').first();
