@@ -114,7 +114,7 @@ let aiEnabled = true;
 let maxDailyUploads = 0;
 let aiPhotoSort = false;
 let multiPostEnabled = false;
-let enabledMarketplaces = ['ebay.com'];
+let enabledMarketplaces = ['ebay.de', 'ebay.ca'];
 
 let tray = null;
 let isQuitting = false;
