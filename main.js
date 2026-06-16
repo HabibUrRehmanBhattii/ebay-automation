@@ -325,8 +325,8 @@ ipcMain.handle('select-folder', async () => {
 ipcMain.handle('get-last-folder', async () => { try { const s = await loadSettings(); if (s.lastFolder) { try { await fs.access(s.lastFolder); return s.lastFolder; } catch (_) {} } } catch (_) {} return null; });
 
 function getFolderValidity(name, imageCount) {
-  if (imageCount === 0) return { valid: false, status: 'Review', reason: '0 Images' };
-  if (imageCount === 1) return { valid: false, status: 'Review', reason: '1 Image' };
+  if (imageCount === 0) return { valid: false, status: 'Review', reason: 'No Images' };
+  if (imageCount === 1) return { valid: false, status: 'Review', reason: 'No Images' };
   if (/^item_/i.test(name)) return { valid: false, status: 'Review', reason: 'Generic Name' };
   if (/\s\(\d+\)$/.test(name)) return { valid: false, status: 'Review', reason: 'Duplicate' };
   return { valid: true, status: 'Pending', reason: null };
