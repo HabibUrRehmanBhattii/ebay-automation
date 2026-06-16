@@ -1134,8 +1134,17 @@ ipcMain.handle('run-single-item', async (event, payload) => {
   if (!folder || !currentQueue.length) return { success: false, message: 'No queue' };
   let item = currentQueue.find(i => i.status === 'Pending');
   if (payload?.index != null && currentQueue[payload.index]) item = currentQueue[payload.index];
-  if (!item || item.status !== 'Pending') return { success: false };
+  if (!item) return { success: false, message: 'Item not found' };
+  if (item.status !== 'Pending' && item.status !== 'Done') return { success: false, message: 'Item is not pending or done' };
   if (item && payload) { if (payload.price != null) item.price = payload.price; if (payload.template != null) item.template = payload.template; }
+  // If item was Done, reset to Pending + remove from processed.json so it can be re-posted
+  if (item.status === 'Done') {
+    item.status = 'Pending'; item.errorReason = null;
+    const proc = await loadProcessed();
+    const idx = proc.indexOf(item.name);
+    if (idx !== -1) { proc.splice(idx, 1); await saveProcessed(proc); }
+    sendQueueUpdate();
+  }
 
   // Multi-post: process to ALL enabled marketplaces
   const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];

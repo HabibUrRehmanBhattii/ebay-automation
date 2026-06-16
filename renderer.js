@@ -325,6 +325,9 @@ function renderQueue() {
     let actionsHTML = '';
     if (item.status === 'Done') {
       actionsHTML = btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+      // In Published tab: if multi-post is active and item is missing a market, show the upload button
+      if (mpActive && onDE && !onCA) actionsHTML += btn('post-ca','btn-primary','🇨🇦','Post to ebay.ca');
+      if (mpActive && !onDE && onCA) actionsHTML += btn('post-de','btn-primary','🇩🇪','Post to ebay.de');
     } else if (item.status === 'Pending') {
       if (mpActive && onDE && !onCA) {
         actionsHTML = btn('post-ca','btn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
