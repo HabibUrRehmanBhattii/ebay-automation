@@ -153,7 +153,11 @@ function getFilteredQueue() {
   const searchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
   return queue.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery);
-    if (activeTab === 'published') {
+    if (activeTab === 'pub-de') {
+      return item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.includes('ebay.de') && matchesSearch;
+    } else if (activeTab === 'pub-ca') {
+      return item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.includes('ebay.ca') && matchesSearch;
+    } else if (activeTab === 'published') {
       return item.status === 'Done' && matchesSearch;
     } else {
       return item.status !== 'Done' && matchesSearch;
@@ -244,11 +248,21 @@ function renderQueue() {
 
   const pendingCount = queue.filter(item => item.status !== 'Done').length;
   const publishedCount = queue.filter(item => item.status === 'Done').length;
+  const pubDECount = queue.filter(item => item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.includes('ebay.de')).length;
+  const pubCACount = queue.filter(item => item.status === 'Done' && item.publishedMarkets && item.publishedMarkets.includes('ebay.ca')).length;
 
   const pendingBadge = $('queue-count-pending');
   const publishedBadge = $('queue-count-published');
   if (pendingBadge) pendingBadge.textContent = pendingCount;
   if (publishedBadge) publishedBadge.textContent = publishedCount;
+
+  const pubDEBadge = $('queue-count-pub-de');
+  const pubCABadge = $('queue-count-pub-ca');
+  if (pubDEBadge) pubDEBadge.textContent = pubDECount;
+  if (pubCABadge) pubCABadge.textContent = pubCACount;
+
+  // Show/hide sub-tabs based on multi-post
+  updatePubSubTabs();
 
   if (queueCountEl) {
     queueCountEl.textContent = `(${filteredQueue.length} folders)`;
@@ -774,25 +788,33 @@ async function pauseAutomation() {
   addLog(isPaused ? '[System]: Automation paused by user.' : '[System]: Automation resumed.', 'system');
 }
 
+// Global pub sub-tab helpers
+const tabPubDE = $('tab-pub-de');
+const tabPubCA = $('tab-pub-ca');
+
+function updatePubSubTabs() {
+  const mpOn = multiCheckbox && multiCheckbox.checked;
+  if (tabPubDE) tabPubDE.style.display = mpOn ? '' : 'none';
+  if (tabPubCA) tabPubCA.style.display = mpOn ? '' : 'none';
+}
+
 function setupControlButtons() {
   const tabPending = $('tab-pending');
   const tabPublished = $('tab-published');
 
-  if (tabPending && tabPublished) {
-    tabPending.addEventListener('click', () => {
-      activeTab = 'pending';
-      tabPending.classList.add('active');
-      tabPublished.classList.remove('active');
-      renderQueue();
-    });
-
-    tabPublished.addEventListener('click', () => {
-      activeTab = 'published';
-      tabPublished.classList.add('active');
-      tabPending.classList.remove('active');
-      renderQueue();
-    });
+  function setActiveTab(tab) {
+    activeTab = tab;
+    [tabPending, tabPublished, tabPubDE, tabPubCA].forEach(t => { if (t) t.classList.remove('active'); });
+    const el = { pending: tabPending, published: tabPublished, 'pub-de': tabPubDE, 'pub-ca': tabPubCA }[tab];
+    if (el) el.classList.add('active');
   }
+
+  if (tabPending && tabPublished) {
+    tabPending.addEventListener('click', () => { setActiveTab('pending'); renderQueue(); });
+    tabPublished.addEventListener('click', () => { setActiveTab('published'); renderQueue(); });
+  }
+  if (tabPubDE) tabPubDE.addEventListener('click', () => { setActiveTab('pub-de'); renderQueue(); });
+  if (tabPubCA) tabPubCA.addEventListener('click', () => { setActiveTab('pub-ca'); renderQueue(); });
 
   // Search Input Event
   if (searchInput) {
@@ -987,8 +1009,12 @@ function setupControlButtons() {
         const selected = [];
         cbs.forEach(cb => { if (cb.checked) selected.push(cb.value); });
         if (selected.length) await window.api.setEnabledMarketplaces(selected);
+      } else {
+        // If turning OFF multi-post while on a sub-tab, revert to published
+        if (activeTab === 'pub-de' || activeTab === 'pub-ca') activeTab = 'published';
       }
       updateMultiLabel();
+      updatePubSubTabs();
       await fetchTemplates();
       renderQueue();
       addLog(`[System]: Multi-post ${on ? 'ON' : 'OFF'}.`, 'system');
