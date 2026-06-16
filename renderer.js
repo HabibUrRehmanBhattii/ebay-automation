@@ -167,11 +167,14 @@ function getFilteredQueue() {
 
 function updateBulkPanel() {
   const selectedItems = queue.filter(item => item.selected);
+  const runBtn = document.getElementById('run-selected-btn');
   if (selectedItems.length > 0 && activeTab === 'pending') {
     bulkEditPanel.style.display = 'flex';
     bulkSelectCount.textContent = `${selectedItems.length} items selected`;
+    if (runBtn) runBtn.style.display = '';
   } else {
     bulkEditPanel.style.display = 'none';
+    if (runBtn) runBtn.style.display = 'none';
   }
 }
 
@@ -1230,6 +1233,39 @@ function setupControlButtons() {
     updateControlStates();
     addLog('[System]: Queue cleared (local only).', 'system');
   });
+
+  // Run Selected — only selected pending items
+  const runSelectedBtn = document.getElementById('run-selected-btn');
+  if (runSelectedBtn) {
+    runSelectedBtn.addEventListener('click', async () => {
+      const sel = queue.filter(i => i.selected && i.status === 'Pending');
+      if (!sel.length) { alert('No pending items selected.'); return; }
+      runSelectedBtn.disabled = true;
+      runSelectedBtn.textContent = '...';
+      addLog('[System]: Running ' + sel.length + ' selected items...', 'system');
+      for (let i = 0; i < sel.length; i++) {
+        const item = sel[i];
+        const idx = queue.findIndex(q => q.name === item.name);
+        addLog('[System]: [' + (i + 1) + '/' + sel.length + '] ' + item.name, 'system');
+        await window.api.runSingleItem({
+          index: idx,
+          folder: currentFolder,
+          price: item.price || 65,
+          template: item.template || guessTemplate(item.name),
+          titleTemplate: titleTemplateInput?.value || '${name}'
+        });
+        if (i < sel.length - 1) {
+          const wait = 30000 + Math.floor(Math.random() * 30000);
+          addLog('[System]: Waiting ' + Math.round(wait / 1000) + 's...', 'system');
+          await new Promise(r => setTimeout(r, wait));
+        }
+      }
+      await scanCurrentFolder();
+      runSelectedBtn.disabled = false;
+      runSelectedBtn.textContent = '▶ Run Selected';
+      addLog('[System]: Done.', 'system');
+    });
+  }
 
   startBtn.addEventListener('click', () => {
     if (isRunning) {
