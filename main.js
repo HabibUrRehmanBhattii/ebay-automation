@@ -995,15 +995,18 @@ async function processOneItem(item, uploadState = { count: 0 }) {
     const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState });
     if (result.success) {
       // Record market, but stay Pending if multi-post has remaining markets
-      await addMarketToFolder(item.name, currentMarketplace);
-      const uploadedTo = (await loadMarkets())[item.name] || [currentMarketplace];
+      try { await addMarketToFolder(item.name, currentMarketplace); } catch (_) {}
+      let uploadedTo = [currentMarketplace];
+      try { const m = await loadMarkets(); uploadedTo = m[item.name] || [currentMarketplace]; } catch (_) {}
       const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];
       const allDone = markets.every(m => uploadedTo.includes(m));
       item.status = allDone ? 'Done' : 'Pending';
       item.publishedMarkets = uploadedTo;
       if (allDone) {
-        const processed = await loadProcessed();
-        if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
+        try {
+          const processed = await loadProcessed();
+          if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
+        } catch (_) {}
       }
       sendLog(`[System]: "${item.name}" → ${currentMarketplace} (${uploadedTo.join(',')}). Done=${allDone}`);
       sendQueueUpdate();
@@ -1055,24 +1058,29 @@ async function runAutomationLoop() {
     }
 
     await delay(500); // let disk writes from processOneItem flush
-    // Re-scan
-    if (targetFolder) {
-      const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
-      const allNames = (await fs.readdir(targetFolder, { withFileTypes: true })).filter(e => e.isDirectory()).map(d => d.name);
-      currentQueue = [];
-      for (const nm of allNames) {
-        const isP = processed.includes(nm);
-        const fp = path.join(targetFolder, nm);
-        const thumb = await findFirstImage(fp);
-        const c = customizations[nm] || {};
-        const rtpl = c.template || guessTemplateFromName(nm);
-        currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl, publishedMarkets: [] });
+    // Re-scan — wrapped in try/catch to prevent silent loop termination
+    try {
+      if (targetFolder) {
+        const processed = await loadProcessed(); const customizations = await loadFolderCustomizations();
+        const allNames = (await fs.readdir(targetFolder, { withFileTypes: true })).filter(e => e.isDirectory()).map(d => d.name);
+        currentQueue = [];
+        for (const nm of allNames) {
+          const isP = processed.includes(nm);
+          const fp = path.join(targetFolder, nm);
+          const thumb = await findFirstImage(fp);
+          const c = customizations[nm] || {};
+          const rtpl = c.template || guessTemplateFromName(nm);
+          currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl, publishedMarkets: [] });
+        }
+        const reMarkets = await loadMarkets();
+        for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
+        sendQueueUpdate();
+        await delay(200);
+        sendQueueUpdate(); // ensure renderer gets updated queue
       }
-      const reMarkets = await loadMarkets();
-      for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
-      sendQueueUpdate();
-      await delay(200);
-      sendQueueUpdate(); // ensure renderer gets updated queue
+    } catch (reScanErr) {
+      sendLog(`[Error]: Re-scan failed — ${reScanErr.message}. Continuing.`);
+      // Don't let re-scan failure kill the loop
     }
     if (itemOk && item !== items[items.length - 1] && isAutomationRunning) {
       const waitMs = Math.floor(Math.random() * (CONFIG.MAX_POST_DELAY_MS - CONFIG.MIN_POST_DELAY_MS + 1)) + CONFIG.MIN_POST_DELAY_MS;

@@ -281,6 +281,18 @@ function renderQueue() {
           <div class="icon">📁</div>
           <div>Select a target folder above to scan for product subfolders.</div>
         </div>`;
+    } else if (activeTab === 'pub-de') {
+      queueRows.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🇩🇪</div>
+          <div>No items published on eBay.de yet.</div>
+        </div>`;
+    } else if (activeTab === 'pub-ca') {
+      queueRows.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🇨🇦</div>
+          <div>No items published on eBay.ca yet.</div>
+        </div>`;
     } else if (activeTab === 'published') {
       queueRows.innerHTML = `
         <div class="empty-state">
@@ -798,6 +810,16 @@ function updatePubSubTabs() {
   if (tabPubCA) tabPubCA.style.display = mpOn ? '' : 'none';
 }
 
+// Update multi-label text based on checked markets (global scope, called from init)
+function updateMultiLabel() {
+  const label = document.getElementById('multi-label');
+  if (!label) return;
+  const cbs = document.querySelectorAll('.market-cb');
+  const sel = [];
+  cbs.forEach(c => { if (c.checked) sel.push(c.value === 'ebay.de' ? 'DE' : c.value === 'ebay.ca' ? 'CA' : c.value.split('.').pop()); });
+  label.textContent = sel.length ? sel.join('+') : 'off';
+}
+
 function setupControlButtons() {
   const tabPending = $('tab-pending');
   const tabPublished = $('tab-published');
@@ -1019,15 +1041,6 @@ function setupControlButtons() {
       renderQueue();
       addLog(`[System]: Multi-post ${on ? 'ON' : 'OFF'}.`, 'system');
     });
-  }
-  // Update multi-label text based on checked markets
-  function updateMultiLabel() {
-    const label = document.getElementById('multi-label');
-    if (!label) return;
-    const cbs = document.querySelectorAll('.market-cb');
-    const sel = [];
-    cbs.forEach(c => { if (c.checked) sel.push(c.value === 'ebay.de' ? 'DE' : c.value === 'ebay.ca' ? 'CA' : c.value.split('.').pop()); });
-    label.textContent = sel.length ? sel.join('+') : 'off';
   }
   document.querySelectorAll('.market-cb').forEach(cb => {
     cb.addEventListener('change', async () => {
@@ -1483,6 +1496,45 @@ async function init() {
   } catch (err) {
     console.error('Failed to load saved marketplace', err);
   }
+
+  // Restore AI toggle state
+  try {
+    const aiOn = await window.api.getAiEnabled();
+    if (aiToggle) aiToggle.checked = aiOn !== false;
+    if (aiToggleLabel) aiToggleLabel.textContent = aiOn !== false ? 'ON' : 'OFF';
+  } catch (_) {}
+
+  // Restore max uploads
+  try {
+    const m = await window.api.getMaxDaily();
+    if (maxUploadsInput && m) maxUploadsInput.value = m;
+  } catch (_) {}
+
+  // Restore AI sort
+  try {
+    const s = await window.api.getAiPhotoSort();
+    if (aiSortCheckbox) aiSortCheckbox.checked = !!s;
+  } catch (_) {}
+
+  // Restore multi-post state
+  try {
+    const mp = await window.api.getMultiPost();
+    if (multiCheckbox) {
+      multiCheckbox.checked = !!mp;
+      if (multiPanel) multiPanel.style.display = mp ? 'block' : 'none';
+    }
+    if (mp) {
+      const markets = await window.api.getEnabledMarketplaces();
+      if (markets && markets.length) {
+        document.querySelectorAll('.market-cb').forEach(cb => {
+          cb.checked = markets.includes(cb.value);
+        });
+      }
+    }
+  } catch (_) {}
+
+  updatePubSubTabs();
+  updateMultiLabel();
 
   setTimeout(() => {
     addLog('Ready. Select or drop your product folder. Processed items will be filtered via processed.json.', 'system');
