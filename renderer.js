@@ -127,7 +127,7 @@ clearLogBtn.addEventListener('click', () => {
 const copyLogBtn = $('copy-log-btn');
 if (copyLogBtn) {
   copyLogBtn.addEventListener('click', () => {
-    const text = logContent.textContent || logContent.innerText || '';
+    if (!logContent) return; const text = logContent.textContent || logContent.innerText || '';
     if (!text.trim()) {
       return;
     }
@@ -1055,12 +1055,12 @@ function setupControlButtons() {
     aiSortCheckbox.addEventListener('change', () => {
       window.api.setAiPhotoSort(aiSortCheckbox.checked);
     });
+  }
 
   // Multi-post toggle + checkbox panel
   if (multiToggle) {
     multiToggle.addEventListener('click', (e) => {
-      if (e.target.id !== 'multi-checkbox' && multiCheckbox) {
-        multiCheckbox.checked = !multiCheckbox.checked;
+      if (e.target === multiCheckbox) return; if (multiCheckbox) {      multiCheckbox.checked = !multiCheckbox.checked;
         multiCheckbox.dispatchEvent(new Event('change'));
       }
     });
@@ -1102,8 +1102,6 @@ function setupControlButtons() {
       multiPanel.style.display = 'none';
     }
   });
-
-  }
 
   // Image Upload Modal Events
   if (imgModalClose) {
