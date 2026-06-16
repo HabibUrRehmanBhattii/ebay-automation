@@ -994,12 +994,18 @@ async function processOneItem(item, uploadState = { count: 0 }) {
     const priceToUse = (item.price != null) ? item.price : defaultPrice;
     const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState });
     if (result.success) {
-      item.status = 'Done';
-      const processed = await loadProcessed();
-      if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
-      sendLog(`[System]: "${item.name}" Done on ${currentMarketplace}.`);
+      // Record market, but stay Pending if multi-post has remaining markets
       await addMarketToFolder(item.name, currentMarketplace);
-      item.publishedMarkets = (await loadMarkets())[item.name] || [];
+      const uploadedTo = (await loadMarkets())[item.name] || [currentMarketplace];
+      const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];
+      const allDone = markets.every(m => uploadedTo.includes(m));
+      item.status = allDone ? 'Done' : 'Pending';
+      item.publishedMarkets = uploadedTo;
+      if (allDone) {
+        const processed = await loadProcessed();
+        if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
+      }
+      sendLog(`[System]: "${item.name}" → ${currentMarketplace} (${uploadedTo.join(',')}). Done=${allDone}`);
       sendQueueUpdate();
       return true;
     } else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
