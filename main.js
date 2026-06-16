@@ -1182,6 +1182,7 @@ ipcMain.handle('mark-item-done', async (event, payload) => {
   const processed = await loadProcessed();
   if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
   item.status = 'Done'; sendQueueUpdate();
+  await addMarketToFolder(item.name, currentMarketplace);
   return { success: true, name: item.name };
 });
 
@@ -1205,7 +1206,7 @@ ipcMain.handle('republish-item', async (event, payload) => {
   if (item) {
     const images = await getImagesInFolder(item.fullPath);
     const validity = getFolderValidity(item.name, images.length);
-    item.status = validity.status; item.errorReason = validity.reason;
+    item.status = validity.status; item.errorReason = validity.reason; item.publishedMarkets = [];
     sendQueueUpdate();
     if (item.status === 'Pending') { processOneItem(item).catch(err => sendLog(`[Error]: Republish "${name}" — ${err.message}`)); return { success: true, status: 'Processing' }; }
     else return { success: true, status: 'Review' };
@@ -1246,24 +1247,25 @@ function findChromeExecutable() { for (const c of CHROME_CANDIDATES) { if (requi
 
 function killBotChrome() {
   if (process.platform !== 'win32') return;
-  runPowerShell(`$profile = "C:\\ebay-automation-profile"; $port = ${CONFIG.CDP_PORT}; Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CommandLine -and ($_.CommandLine -like "*$profile*" -or $_.CommandLine -like "*remote-debugging-port=$port*")) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }`);
+  const profDir = CONFIG.CHROME_PROFILE_DIR;
+  runPowerShell(`$profile = "${profDir}"; $port = ${CONFIG.CDP_PORT}; Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CommandLine -and ($_.CommandLine -like "*$profile*" -or $_.CommandLine -like "*remote-debugging-port=$port*")) { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }`);
 }
 
 function bringChromeToFront() {
   if (process.platform !== 'win32') return;
-  runPowerShell(`$profile = "C:\\ebay-automation-profile"; $p = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$profile*" }; if ($p) { Add-Type -Name W32 -Namespace W32 -MemberDefinition '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h, int n);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);'; for ($i=0;$i -lt 5;$i++) { foreach ($pr in $p) { $pw = Get-Process -Id $pr.ProcessId -ErrorAction SilentlyContinue; if ($pw -and $pw.MainWindowHandle -ne 0) { [W32.W32]::ShowWindow($pw.MainWindowHandle, 9); [W32.W32]::SetForegroundWindow($pw.MainWindowHandle) } } Start-Sleep -Milliseconds 300 } }`);
+  runPowerShell(`$profile = "${CONFIG.CHROME_PROFILE_DIR}"; $p = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$profile*" }; if ($p) { Add-Type -Name W32 -Namespace W32 -MemberDefinition '[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h, int n);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);'; for ($i=0;$i -lt 5;$i++) { foreach ($pr in $p) { $pw = Get-Process -Id $pr.ProcessId -ErrorAction SilentlyContinue; if ($pw -and $pw.MainWindowHandle -ne 0) { [W32.W32]::ShowWindow($pw.MainWindowHandle, 9); [W32.W32]::SetForegroundWindow($pw.MainWindowHandle) } } Start-Sleep -Milliseconds 300 } }`);
 }
 
 function setChromeWindowVisible(visible) {
   chromeVisible = visible;
   if (process.platform !== 'win32') return;
-  runPowerShell(`$n = ${visible ? 9 : 0}; $code = '[DllImport("user32.dll")]public static extern bool EnumWindows(Callback c, IntPtr l);[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h, int n);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h, System.Text.StringBuilder c, int m);public delegate bool Callback(IntPtr h, IntPtr l);public static System.Collections.Generic.List<IntPtr> GetWindows(int pid){var w=new System.Collections.Generic.List<IntPtr>();EnumWindows(delegate(IntPtr h,IntPtr l){uint p;GetWindowThreadProcessId(h,out p);if(p==pid){var sb=new System.Text.StringBuilder(256);GetClassName(h,sb,sb.Capacity);if(sb.ToString()=="Chrome_WidgetWin_1")w.Add(h);}return true;},IntPtr.Zero);return w;}'; Add-Type -TypeDefinition "using System;using System.Runtime.InteropServices;using System.Collections.Generic;using System.Text;public class W{" + $code + "}" -ErrorAction SilentlyContinue; $profile='C:\\ebay-automation-profile'; Get-CimInstance Win32_Process -Filter 'Name = \"chrome.exe\"' -ErrorAction SilentlyContinue | ForEach-Object { if($_.CommandLine -like \"*$profile*\"){ [W]::GetWindows($_.ProcessId) | ForEach-Object { [W]::ShowWindow($_,$n); if($n -eq 9){[W]::SetForegroundWindow($_)} } } }`);
+  runPowerShell(`$n = ${visible ? 9 : 0}; $code = '[DllImport("user32.dll")]public static extern bool EnumWindows(Callback c, IntPtr l);[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h, int n);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h, System.Text.StringBuilder c, int m);public delegate bool Callback(IntPtr h, IntPtr l);public static System.Collections.Generic.List<IntPtr> GetWindows(int pid){var w=new System.Collections.Generic.List<IntPtr>();EnumWindows(delegate(IntPtr h,IntPtr l){uint p;GetWindowThreadProcessId(h,out p);if(p==pid){var sb=new System.Text.StringBuilder(256);GetClassName(h,sb,sb.Capacity);if(sb.ToString()=="Chrome_WidgetWin_1")w.Add(h);}return true;},IntPtr.Zero);return w;}'; Add-Type -TypeDefinition "using System;using System.Runtime.InteropServices;using System.Collections.Generic;using System.Text;public class W{" + $code + "}" -ErrorAction SilentlyContinue; $profile='${CONFIG.CHROME_PROFILE_DIR}'; Get-CimInstance Win32_Process -Filter 'Name = \"chrome.exe\"' -ErrorAction SilentlyContinue | ForEach-Object { if($_.CommandLine -like \"*$profile*\"){ [W]::GetWindows($_.ProcessId) | ForEach-Object { [W]::ShowWindow($_,$n); if($n -eq 9){[W]::SetForegroundWindow($_)} } } }`);
 }
 
 async function launchAutomationChrome(visible = chromeVisible) {
   chromeVisible = visible; killBotChrome(); await delay(800);
   const chromePath = findChromeExecutable();
-  const userDataDir = 'C:\\ebay-automation-profile';
+  const userDataDir = CONFIG.CHROME_PROFILE_DIR;
   if (!chromePath) { sendLog('[Error]: Chrome not found.'); return { success: false, message: 'Chrome not found' }; }
   const profileExists = require('fs').existsSync(userDataDir);
   if (profileExists) { sendLog(`[Session]: Automation profile found at ${userDataDir}.`); }
@@ -1339,7 +1341,7 @@ ipcMain.handle('restart-chrome', async (event, visible) => { killBotChrome(); aw
 
 // ==================== Cookie Helpers ====================
 async function openAutomationProfileFolder() {
-  try { await shell.openPath('C:\\ebay-automation-profile'); return { success: true }; }
+  try { await shell.openPath(CONFIG.CHROME_PROFILE_DIR); return { success: true }; }
   catch (err) { return { success: false, message: err.message }; }
 }
 
