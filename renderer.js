@@ -105,6 +105,7 @@ let uploadTargetItem = null; // item object currently editing
 
 // ==================== Logging (receives streamed events from main) ====================
 function addLog(message, type = 'system') {
+  if (!logContent) return;
   const line = document.createElement('div');
   line.className = `log-line ${type}`;
   const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -454,14 +455,19 @@ function renderQueue() {
     // Per-row single item trigger (calls into main via IPC)
     const processBtn = row.querySelector('[data-action="process"]');
     if (processBtn) {
-      processBtn.addEventListener('click', () => {
-        window.api.runSingleItem({
+      processBtn.addEventListener('click', async () => {
+        processBtn.disabled = true;
+        processBtn.textContent = '...';
+        await window.api.runSingleItem({
           index,
           folder: currentFolder,
           price: queue[index].price !== undefined ? queue[index].price : 65,
           template: queue[index].template || guessTemplate(queue[index].name),
           titleTemplate: (titleTemplateInput && titleTemplateInput.value) || '${name}'
         });
+        await scanCurrentFolder();
+        processBtn.disabled = false;
+        processBtn.textContent = 'Process';
       });
     }
 
@@ -814,7 +820,7 @@ async function startAutomation() {
     folder: currentFolder,
     defaultPrice,
     titleTemplate,
-    items: queue.map(item => ({
+    items: queue.filter(item => item.status !== 'Done').map(item => ({
       name: item.name,
       price: item.price !== undefined ? item.price : defaultPrice,
       template: item.template || guessTemplate(item.name)
