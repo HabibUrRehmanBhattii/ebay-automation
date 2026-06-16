@@ -316,68 +316,35 @@ function renderQueue() {
     });
     const selectHTML = `<select class="row-template-select" data-index="${index}">${optionsHTML}</select>`;
 
+    // Smart action buttons
+    const mpActive = multiCheckbox && multiCheckbox.checked;
+    const onDE = item.publishedMarkets && item.publishedMarkets.includes('ebay.de');
+    const onCA = item.publishedMarkets && item.publishedMarkets.includes('ebay.ca');
+    const btn = (act, cls, label, title) => `<button class="btn ${cls} row-btn" style="padding:4px 8px;font-size:11px;" data-action="${act}" data-index="${index}" title="${title||''}">${label}</button>`;
+
     let actionsHTML = '';
     if (item.status === 'Done') {
-      actionsHTML = `
-        <button class="btn btn-secondary row-btn" data-action="move-back" data-index="${index}">↩️ Move to Queue</button>
-        <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
-      `;
-} else if (item.status === 'Pending') {
-      let pendActions = '';
-      // Check if multi-post is active and which markets the item is already on
-      const mpActive = multiCheckbox && multiCheckbox.checked;
-      const onDE = item.publishedMarkets && item.publishedMarkets.includes('ebay.de');
-      const onCA = item.publishedMarkets && item.publishedMarkets.includes('ebay.ca');
-      const bothDone = onDE && onCA;
-
-      if (mpActive && (onDE || onCA)) {
-        // Item is partially or fully uploaded via multi-post
-        if (bothDone) {
-          pendActions = `
-            <button class="btn btn-success row-btn" data-action="mark-both" data-index="${index}">✅ Both Uploaded</button>
-            <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
-          `;
-        } else if (onDE && !onCA) {
-          pendActions = `
-            <button class="btn btn-primary row-btn" data-action="post-ca" data-index="${index}">🇨🇦 Upload to CA</button>
-            <button class="btn btn-secondary row-btn" data-action="mark-both" data-index="${index}">Mark Both Done</button>
-            <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
-          `;
-        } else if (!onDE && onCA) {
-          pendActions = `
-            <button class="btn btn-primary row-btn" data-action="post-de" data-index="${index}">🇩🇪 Upload to DE</button>
-            <button class="btn btn-secondary row-btn" data-action="mark-both" data-index="${index}">Mark Both Done</button>
-            <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
-          `;
-        }
+      actionsHTML = btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+    } else if (item.status === 'Pending') {
+      if (mpActive && onDE && !onCA) {
+        actionsHTML = btn('post-ca','btn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
+      } else if (mpActive && !onDE && onCA) {
+        actionsHTML = btn('post-de','btn-primary','🇩🇪 List','Post to ebay.de') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
       } else if (mpActive && !onDE && !onCA) {
-        // Multi-post active but nothing uploaded yet — upload to both
-        pendActions = `
-          <button class="btn btn-primary row-btn" data-action="process" data-index="${index}">🇩🇪➡️🇨🇦 Upload DE+CA</button>
-          <button class="btn btn-secondary row-btn" data-action="done" data-index="${index}">Done</button>
-        `;
+        actionsHTML = btn('process','btn-primary','🇩🇪+🇨🇦','List on both') + btn('done','btn-success','✔','Mark done');
       } else {
-        // Single market mode — normal Process button
-        pendActions = `
-          <button class="btn btn-secondary row-btn" data-action="process" data-index="${index}">Process</button>
-          <button class="btn btn-success row-btn" data-action="done" data-index="${index}">Done</button>
-        `;
+        actionsHTML = btn('process','btn-secondary','▶','Process') + btn('done','btn-success','✔','Mark done');
       }
-      actionsHTML = pendActions;
-} else if (item.status === 'Review') {
+    } else if (item.status === 'Failed') {
+      actionsHTML = btn('retry','btn-primary','🔄','Retry') + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+    } else if (item.status === 'Review') {
       if (item.errorReason === 'No Images') {
-        actionsHTML = `
-          <button class="btn btn-primary row-btn" data-action="upload-imgs" data-index="${index}">📸 Upload</button>
-          <button class="btn btn-secondary row-btn" data-action="unzip" data-index="${index}">📦 Unzip</button>
-          <button class="btn btn-secondary row-btn" data-action="open-dir" data-index="${index}">📁 Open</button>
-          <button class="btn btn-success row-btn" data-action="done" data-index="${index}">Done</button>
-        `;
+        actionsHTML = btn('upload-imgs','btn-primary','📸') + btn('unzip','btn-secondary','📦') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
       } else {
-        actionsHTML = `
-          <button class="btn btn-secondary row-btn" data-action="rename" data-index="${index}">✏️ Rename</button>
-          <button class="btn btn-success row-btn" data-action="done" data-index="${index}">Done</button>
-        `;
+        actionsHTML = btn('rename','btn-secondary','✏️') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
       }
+    } else {
+      actionsHTML = btn('done','btn-success','✔','Mark done') + btn('open-dir','btn-outline','📁','Open folder');
     }
 
     row.innerHTML = `
