@@ -541,6 +541,41 @@ function renderQueue() {
       });
     }
 
+    // Multi-post single-market buttons (on Done items in Published History)
+    const postDEBtn = row.querySelector('[data-action="post-de"]');
+    const postCABtn = row.querySelector('[data-action="post-ca"]');
+    const markBothBtn = row.querySelector('[data-action="mark-both"]');
+
+    if (postDEBtn) {
+      postDEBtn.addEventListener('click', async () => {
+        postDEBtn.disabled = true; postDEBtn.textContent = '…';
+        addLog(`[Multi]: Posting "${item.name}" to ebay.de...`, 'system');
+        await window.api.setMarketplace('ebay.de');
+        await window.api.runSingleItem({ index, folder: currentFolder, price: item.price || 65, template: item.template || guessTemplate(item.name), titleTemplate: titleTemplateInput?.value || '${name}' });
+        await scanCurrentFolder();
+      });
+    }
+    if (postCABtn) {
+      postCABtn.addEventListener('click', async () => {
+        postCABtn.disabled = true; postCABtn.textContent = '…';
+        addLog(`[Multi]: Posting "${item.name}" to ebay.ca...`, 'system');
+        await window.api.setMarketplace('ebay.ca');
+        await window.api.runSingleItem({ index, folder: currentFolder, price: item.price || 65, template: item.template || guessTemplate(item.name), titleTemplate: titleTemplateInput?.value || '${name}' });
+        await scanCurrentFolder();
+      });
+    }
+    if (markBothBtn) {
+      markBothBtn.addEventListener('click', async () => {
+        markBothBtn.disabled = true; markBothBtn.textContent = '…';
+        addLog(`[System]: Marking "${item.name}" as done on ebay.de and ebay.ca.`, 'system');
+        await window.api.markItemDone({ name: item.name });
+        await window.api.setMarketplace('ebay.ca');
+        await window.api.markItemDone({ name: item.name });
+        await window.api.setMarketplace('ebay.de');
+        await scanCurrentFolder();
+      });
+    }
+
     // Unzip handler — extract images from zip files inside this folder
     const unzipBtn = row.querySelector('[data-action="unzip"]');
     if (unzipBtn) {
