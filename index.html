@@ -298,7 +298,7 @@
 
     .queue-row {
       display: grid;
-      grid-template-columns: 30px 40px 1fr 80px 120px 100px 220px;
+      grid-template-columns: 30px 40px 1fr 60px 100px 80px 160px;
       gap: 8px;
       align-items: center;
       padding: 4px 12px;
@@ -995,7 +995,7 @@
       </div>
 
       <div class="queue-table">
-        <div class="queue-table-header" style="grid-template-columns: 30px 40px 1fr 80px 120px 100px 220px;">
+        <div class="queue-table-header" style="grid-template-columns: 30px 40px 1fr 60px 100px 80px 160px;">
           <div style="display:flex; align-items:center; justify-content:center;">
             <input type="checkbox" id="bulk-select-all" style="cursor:pointer; width:14px; height:14px; margin:0;">
           </div>
@@ -1184,6 +1184,24 @@
         <div style="display:flex; gap:8px; justify-content:flex-end; padding-top:4px;">
           <button id="cancel-upload-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">Cancel</button>
           <button id="save-upload-btn" class="btn btn-primary" style="padding:6px 18px; font-size:12px;" disabled>Save Images</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Product Notes Modal -->
+  <div id="notes-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" id="notes-modal-backdrop"></div>
+    <div class="modal-content" style="width:500px;height:380px;">
+      <div class="modal-header">
+        <h3>📝 Notes — <span id="notes-folder-name" style="color:var(--accent);">folder</span></h3>
+        <button class="modal-close" id="notes-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;height:100%;">
+        <textarea id="notes-textarea" class="modal-input" style="flex:1;resize:none;font-family:sans-serif;font-size:12px;line-height:1.5;" placeholder="Add production notes here...&#10;e.g. Default scaled to 6ft/200lbs&#10;Parts come pre-split, 20-30 parts&#10;These notes will be added to your listing description."></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="notes-delete-btn" class="btn btn-danger" style="font-size:11px;">🗑️ Clear</button>
+          <button id="notes-save-btn" class="btn btn-primary" style="font-size:11px;">💾 Save Notes</button>
         </div>
       </div>
     </div>

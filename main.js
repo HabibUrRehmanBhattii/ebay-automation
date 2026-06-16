@@ -351,7 +351,7 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
       const validity = getFolderValidity(dir.name, images.length);
       const custom = customizations[dir.name] || {};
       const tplAuto = custom.template || guessTemplateFromName(dir.name);
-      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto, publishedMarkets: [] });
+      currentQueue.push({ name: dir.name, fullPath, status: isProcessed ? 'Done' : validity.status, errorReason: isProcessed ? null : validity.reason, thumb, price: resolveItemPrice(custom.price, tplAuto), template: tplAuto, publishedMarkets: [], notes: custom.notes || '' });
     }
     const mktInfo = await loadMarkets();
     for (const qi of currentQueue) {
@@ -590,15 +590,18 @@ async function clickVisibleActionButton(page, label, options = {}) {
 }
 
 // DeepSeek
-async function generateDescriptionWithDeepSeek(apiKey, productName) {
+async function generateDescriptionWithDeepSeek(apiKey, productName, notes) {
   const mp = getMarketplaceConfig();
   const isGerman = mp.locale === 'de' || currentMarketplace === 'ebay.de';
   const lang = isGerman ? 'German' : mp.locale === 'fr' ? 'French' : mp.locale === 'it' ? 'Italian' : mp.locale === 'es' ? 'Spanish' : 'English';
-  sendLog(`[OpenRouter]: Generating ${lang} description for "${productName}"...`);
+  sendLog(`[OpenRouter]: Generating ${lang} description${notes ? ' with notes' : ''} for "${productName}"...`);
   try {
-    const prompt = isGerman
+    let prompt = isGerman
       ? `Schreibe eine überzeugende, detaillierte eBay-Artikelbeschreibung auf Deutsch für: "${productName}". Dies ist ein roher 3D-gedruckter DIY Cosplay Bausatz (unmontiert, unlackiert, muss geschliffen und zusammengebaut werden). Verwende HTML-Formatierung. Füge einen Versand-Hinweis hinzu. Antworte NUR auf Deutsch.`
       : `Write a high-converting, friendly, and details-rich eBay product description for: "${productName}". This is a raw 3D printed DIY cosplay prop/helmet kit. Use HTML formatting. Include a shipping section.`;
+    if (notes && notes.trim()) {
+      prompt += (isGerman ? `\n\nWichtige Produkt-Hinweise die in die Beschreibung eingearbeitet werden müssen:\n${notes.trim()}` : `\n\nImportant product notes to incorporate into the description:\n${notes.trim()}`);
+    }
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://ebay-automation.local', 'X-Title': 'eBay Automation Studio' }, body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: prompt }] }) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const d = await response.json();
@@ -955,14 +958,19 @@ async function createEbayListing({ searchName, title, description, price, imageP
 // German locale templates (overrides default English templates for ebay.de)
 
 
-function getDescriptionFromTemplate(templatesMap, templateKey, productName) {
+function getDescriptionFromTemplate(templatesMap, templateKey, productName, notes) {
   const mp = getMarketplaceConfig();
   const isGerman = mp.locale === 'de' || currentMarketplace === 'ebay.de';
   // Use German templates for ebay.de — check BOTH locale AND marketplace key
   const tplSource = (isGerman && germanTemplates[templateKey]) ? germanTemplates : templatesMap;
   const tpl = tplSource[templateKey];
   if (!tpl || !tpl.text) return `3D Printed DIY Cosplay Prop Kit - ${productName}`;
-  const desc = tpl.text.replace(/\$\{name\}/g, productName).replace(/\$\{productName\}/g, productName);
+  let desc = tpl.text.replace(/\$\{name\}/g, productName).replace(/\$\{productName\}/g, productName);
+  // Append product notes if present
+  if (notes && notes.trim()) {
+    const noteHeader = isGerman ? '\n\n📝 Produkt-Hinweise:\n' : '\n\n📝 Product Notes:\n';
+    desc += noteHeader + notes.trim();
+  }
   sendLog(`[Desc] locale=${mp.locale} market=${currentMarketplace} isGerman=${isGerman} tpl=${templateKey} → "${desc.substring(0, 50)}..."`);
   return desc;
 }
@@ -985,10 +993,11 @@ async function processOneItem(item, uploadState = { count: 0 }) {
     else {
       const template = item.template || guessTemplateFromName(item.name);
       sendLog(`[System]: Auto-detected template "${template}" for "${item.name}".`);
+      const notes = item.notes || '';
       if (template !== 'deepseek' && template !== 'ai-realtime') {
-        const tpls = await loadTemplatesInternal(); description = getDescriptionFromTemplate(tpls, template, productName);
+        const tpls = await loadTemplatesInternal(); description = getDescriptionFromTemplate(tpls, template, productName, notes);
       } else {
-        description = useAI ? await generateDescriptionWithDeepSeek(apiKey, productName) : getDescriptionFromTemplate(await loadTemplatesInternal(), 'universal', productName);
+        description = useAI ? await generateDescriptionWithDeepSeek(apiKey, productName, notes) : getDescriptionFromTemplate(await loadTemplatesInternal(), 'universal', productName, notes);
       }
     }
     const priceToUse = (item.price != null) ? item.price : defaultPrice;
@@ -1476,7 +1485,7 @@ ipcMain.handle('rename-folder', async (e, p) => {
   } catch (err) { return { success: false, message: err.message }; }
 });
 ipcMain.handle('open-folder', async (e, fp) => { try { await shell.openPath(fp); return true; } catch (_) { return false; } });
-ipcMain.handle('save-folder-customization', async (e, p) => { const { folderName, price, template } = p || {}; if (!folderName) return false; const c = await loadFolderCustomizations(); c[folderName] = { price, template }; return saveFolderCustomizations(c); });
+ipcMain.handle('save-folder-customization', async (e, p) => { const { folderName, price, template, notes } = p || {}; if (!folderName) return false; const c = await loadFolderCustomizations(); const existing = c[folderName] || {}; c[folderName] = { price: price != null ? price : existing.price, template: template || existing.template, notes: notes != null ? notes : existing.notes }; return saveFolderCustomizations(c); });
 
 // ==================== OpenRouter API ====================
 ipcMain.handle('validate-openrouter-key', async (e, key) => {

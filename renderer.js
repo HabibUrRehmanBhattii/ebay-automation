@@ -78,6 +78,50 @@ $('min-btn').addEventListener('click', () => window.api.minimizeWindow());
 $('max-btn').addEventListener('click', () => window.api.maximizeWindow());
 $('close-btn').addEventListener('click', () => window.api.closeWindow());
 
+// Notes modal
+const notesModal = document.getElementById('notes-modal');
+const notesTextarea = document.getElementById('notes-textarea');
+const notesFolderName = document.getElementById('notes-folder-name');
+const notesSaveBtn = document.getElementById('notes-save-btn');
+const notesDeleteBtn = document.getElementById('notes-delete-btn');
+const notesModalClose = document.getElementById('notes-modal-close');
+const notesModalBackdrop = document.getElementById('notes-modal-backdrop');
+
+let notesTargetItem = null;
+
+function openNotesModal(item) {
+  notesTargetItem = item;
+  notesFolderName.textContent = item.name;
+  notesTextarea.value = item.notes || '';
+  notesModal.style.display = 'flex';
+  notesTextarea.focus();
+}
+function closeNotesModal() { notesModal.style.display = 'none'; notesTargetItem = null; }
+if (notesModalClose) notesModalClose.addEventListener('click', closeNotesModal);
+if (notesModalBackdrop) notesModalBackdrop.addEventListener('click', closeNotesModal);
+if (notesSaveBtn) {
+  notesSaveBtn.addEventListener('click', async () => {
+    if (!notesTargetItem) return;
+    const notes = notesTextarea.value.trim();
+    notesTargetItem.notes = notes;
+    await window.api.saveFolderCustomization(notesTargetItem.name, notesTargetItem.price, notesTargetItem.template || 'universal', notes);
+    addLog(`[System]: Notes saved for "${notesTargetItem.name}".`, 'system');
+    closeNotesModal();
+    renderQueue();
+  });
+}
+if (notesDeleteBtn) {
+  notesDeleteBtn.addEventListener('click', async () => {
+    if (!notesTargetItem) return;
+    notesTargetItem.notes = '';
+    notesTextarea.value = '';
+    await window.api.saveFolderCustomization(notesTargetItem.name, notesTargetItem.price, notesTargetItem.template || 'universal', '');
+    addLog(`[System]: Notes cleared for "${notesTargetItem.name}".`, 'system');
+    closeNotesModal();
+    renderQueue();
+  });
+}
+
 // State (renderer only)
 let currentFolder = null;
 let queue = [];
@@ -352,32 +396,36 @@ function renderQueue() {
     const onCA = item.publishedMarkets && item.publishedMarkets.includes('ebay.ca');
     const btn = (act, cls, label, title) => `<button class="btn ${cls} row-btn" style="padding:4px 8px;font-size:11px;" data-action="${act}" data-index="${index}" title="${title||''}">${label}</button>`;
 
+    // Notes indicator
+    const hasNotes = item.notes && item.notes.trim().length > 0;
+    const notesBtn = `<button class="btn ${hasNotes ? 'btn-primary' : 'btn-outline'} row-btn" style="padding:4px 8px;font-size:11px;" data-action="notes" data-index="${index}" title="${hasNotes ? item.notes.substring(0, 100) : 'Add notes'}">📝</button>`;
+
     let actionsHTML = '';
     if (item.status === 'Done') {
-      actionsHTML = btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = notesBtn + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
       // In Published tab: if multi-post is active and item is missing a market, show the upload button
       if (mpActive && onDE && !onCA) actionsHTML += btn('post-ca','btn-primary','🇨🇦','Post to ebay.ca');
       if (mpActive && !onDE && onCA) actionsHTML += btn('post-de','btn-primary','🇩🇪','Post to ebay.de');
     } else if (item.status === 'Pending') {
       if (mpActive && onDE && !onCA) {
-        actionsHTML = btn('post-ca','btn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
+        actionsHTML = notesBtn + btn('post-ca','btn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
       } else if (mpActive && !onDE && onCA) {
-        actionsHTML = btn('post-de','btn-primary','🇩🇪 List','Post to ebay.de') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
+        actionsHTML = notesBtn + btn('post-de','btn-primary','🇩🇪 List','Post to ebay.de') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
       } else if (mpActive && !onDE && !onCA) {
-        actionsHTML = btn('process','btn-primary','🇩🇪+🇨🇦','List on both') + btn('done','btn-success','✔','Mark done');
+        actionsHTML = notesBtn + btn('process','btn-primary','🇩🇪+🇨🇦','List on both') + btn('done','btn-success','✔','Mark done');
       } else {
-        actionsHTML = btn('process','btn-secondary','▶','Process') + btn('done','btn-success','✔','Mark done');
+        actionsHTML = notesBtn + btn('process','btn-secondary','▶','Process') + btn('done','btn-success','✔','Mark done');
       }
     } else if (item.status === 'Failed') {
-      actionsHTML = btn('retry','btn-primary','🔄','Retry') + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = notesBtn + btn('retry','btn-primary','🔄','Retry') + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
     } else if (item.status === 'Review') {
       if (item.errorReason === 'No Images') {
-        actionsHTML = btn('upload-imgs','btn-primary','📸') + btn('unzip','btn-secondary','📦') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
+        actionsHTML = notesBtn + btn('upload-imgs','btn-primary','📸') + btn('unzip','btn-secondary','📦') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
       } else {
-        actionsHTML = btn('rename','btn-secondary','✏️') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
+        actionsHTML = notesBtn + btn('rename','btn-secondary','✏️') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
       }
     } else {
-      actionsHTML = btn('done','btn-success','✔','Mark done') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = notesBtn + btn('done','btn-success','✔','Mark done') + btn('open-dir','btn-outline','📁','Open folder');
     }
 
     row.innerHTML = `
@@ -539,6 +587,14 @@ function renderQueue() {
             renderQueue();
           }
         });
+      });
+    }
+
+    // Notes button — open popup to edit product notes
+    const notesBtnEl = row.querySelector('[data-action="notes"]');
+    if (notesBtnEl) {
+      notesBtnEl.addEventListener('click', () => {
+        openNotesModal(item);
       });
     }
 

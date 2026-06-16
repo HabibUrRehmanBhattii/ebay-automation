@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   saveTemplates: (templates) => ipcRenderer.invoke('save-templates', templates),
   renameFolder: (parentPath, oldName, newName) => ipcRenderer.invoke('rename-folder', { parentPath, oldName, newName }),
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
-  saveFolderCustomization: (folderName, price, template) => ipcRenderer.invoke('save-folder-customization', { folderName, price, template }),
+  saveFolderCustomization: (folderName, price, template, notes) => ipcRenderer.invoke('save-folder-customization', { folderName, price, template, notes }),
   unzipFolder: (folderPath) => ipcRenderer.invoke('unzip-folder', folderPath),
   unzipAll: () => ipcRenderer.invoke('unzip-all'),
 
