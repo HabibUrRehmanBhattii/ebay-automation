@@ -14,10 +14,12 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.4.2",
-    "playwright": "^1.60.0"
+    "jimp": "^0.22.12",
+    "playwright": "^1.60.0",
+    "sharp": "^0.34.4"
   },
   "devDependencies": {
-    "electron": "^42.4.0",
+    "electron": "^42.4.1",
     "electron-builder": "^26.15.2"
   },
   "build": {

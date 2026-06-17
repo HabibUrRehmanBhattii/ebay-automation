@@ -42,6 +42,7 @@ const multiCheckbox = $('multi-checkbox');
 const multiPanel = $('multi-panel');
 const multiToggle = $('multi-toggle');
 const marketplaceSelect = $('marketplace-select');
+const importMissingBtn = $('import-missing-btn');
 
 const imgModal = $('image-manager-modal');
 const imgModalClose = $('image-manager-modal-close');
@@ -119,6 +120,109 @@ if (notesDeleteBtn) {
     addLog(`[System]: Notes cleared for "${notesTargetItem.name}".`, 'system');
     closeNotesModal();
     renderQueue();
+  });
+}
+
+// ==================== Image Reorder Modal ====================
+const reorderModal = $('reorder-modal');
+const reorderModalClose = $('reorder-modal-close');
+const reorderModalBackdrop = $('reorder-modal-backdrop');
+const reorderFolderName = $('reorder-folder-name');
+const reorderGrid = $('reorder-grid');
+const reorderResetBtn = $('reorder-reset-btn');
+const reorderCancelBtn = $('reorder-cancel-btn');
+const reorderSaveBtn = $('reorder-save-btn');
+
+let reorderTargetItem = null;
+let reorderImages = []; // [{name, path}]
+let reorderSelection = []; // ordered array of image names
+
+function openReorderModal(item) {
+  reorderTargetItem = item;
+  reorderFolderName.textContent = item.name;
+  reorderSelection = [];
+  reorderModal.style.display = 'flex';
+  loadReorderGrid();
+}
+
+async function loadReorderGrid() {
+  if (!reorderTargetItem) return;
+  reorderGrid.innerHTML = '<div class="empty-state" style="grid-column:span 5;">Loading...</div>';
+  reorderImages = await window.api.getImagesForReorder(reorderTargetItem.fullPath);
+  renderReorderGrid();
+}
+
+function renderReorderGrid() {
+  reorderGrid.innerHTML = '';
+  if (!reorderImages.length) {
+    reorderGrid.innerHTML = '<div class="empty-state" style="grid-column:span 5;">No images found.</div>';
+    return;
+  }
+  reorderImages.forEach(img => {
+    const card = document.createElement('div');
+    card.className = 'reorder-card';
+    const orderIdx = reorderSelection.indexOf(img.name);
+    if (orderIdx >= 0) {
+      card.classList.add('selected');
+    }
+    card.innerHTML = `
+      <img src="file://${img.path.replace(/\\/g,'/')}" alt="${img.name}">
+      <div class="order-badge">${orderIdx >= 0 ? orderIdx + 1 : ''}</div>
+    `;
+    card.addEventListener('click', () => {
+      const idx = reorderSelection.indexOf(img.name);
+      if (idx >= 0) {
+        // Already selected — remove from order
+        reorderSelection.splice(idx, 1);
+      } else {
+        // Add to end of order
+        reorderSelection.push(img.name);
+      }
+      renderReorderGrid();
+    });
+    reorderGrid.appendChild(card);
+  });
+}
+
+function closeReorderModal() {
+  reorderModal.style.display = 'none';
+  reorderTargetItem = null;
+  reorderImages = [];
+  reorderSelection = [];
+}
+
+if (reorderModalClose) reorderModalClose.addEventListener('click', closeReorderModal);
+if (reorderModalBackdrop) reorderModalBackdrop.addEventListener('click', closeReorderModal);
+if (reorderCancelBtn) reorderCancelBtn.addEventListener('click', closeReorderModal);
+if (reorderResetBtn) {
+  reorderResetBtn.addEventListener('click', () => {
+    reorderSelection = [];
+    renderReorderGrid();
+  });
+}
+if (reorderSaveBtn) {
+  reorderSaveBtn.addEventListener('click', async () => {
+    if (!reorderTargetItem || !reorderSelection.length) {
+      alert('Click images to set your preferred order first.');
+      return;
+    }
+    reorderSaveBtn.disabled = true;
+    reorderSaveBtn.textContent = '⏳ Saving...';
+    try {
+      const res = await window.api.reorderImages(reorderTargetItem.fullPath, reorderSelection);
+      if (res && res.success) {
+        addLog(`[Reorder]: ✅ Renamed ${res.renamed} images for "${reorderTargetItem.name}".`, 'system');
+        closeReorderModal();
+        // Refresh thumbnail
+        if (currentFolder) await scanCurrentFolder();
+      } else {
+        alert('Reorder failed: ' + (res?.message || 'Unknown'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+    reorderSaveBtn.disabled = false;
+    reorderSaveBtn.textContent = '💾 Save Order';
   });
 }
 
@@ -367,20 +471,25 @@ function renderQueue() {
       ? `<img src="file://${item.thumb.replace(/\\/g, '/')}" alt="">`
       : `<span style="font-size:18px;opacity:.7;">🖼️</span>`;
 
-    const statusClass = `status-${item.status.toLowerCase()}`;
+    const statusClass = `pill-${item.status.toLowerCase()}`;
     let mktBadge = '';
     if (item.publishedMarkets && item.publishedMarkets.length) {
       mktBadge = ' ' + item.publishedMarkets.map(m => m === 'ebay.de' ? '🇩🇪' : m === 'ebay.ca' ? '🇨🇦' : '🌐').join('');
     }
+    // Import badge for scraped/missing_items items
+    const isImported = (item.template === 'scraped' || (item.fullPath && item.fullPath.includes('missing_items')));
+    const importBadge = isImported ? ' 📋' : '';
     let statusLabel;
     if (item.status === 'Review') statusLabel = `Review: ${item.errorReason}`;
-    else if (item.status === 'Done') statusLabel = 'Done' + mktBadge;
+    else if (item.status === 'Done') statusLabel = 'Done' + mktBadge + importBadge;
     else if (item.status === 'Failed') statusLabel = 'Failed: ' + (item.errorReason || '?');
-    else statusLabel = item.status + mktBadge;
+    else statusLabel = item.status + mktBadge + importBadge;
 
     const isDeepSeekSelected = (item.template || guessTemplate(item.name)).toLowerCase() === 'deepseek' ? 'selected' : '';
+    const isScrapedSelected = (item.template || '').toLowerCase() === 'scraped' ? 'selected' : '';
     let optionsHTML = `
       <option value="deepseek" ${isDeepSeekSelected}>✨ DeepSeek AI Description</option>
+      <option value="scraped" ${isScrapedSelected}>📋 Scraped (as-is)</option>
     `;
 
     Object.keys(templatesMap).forEach(key => {
@@ -388,60 +497,63 @@ function renderQueue() {
       const isSelected = (item.template || guessTemplate(item.name)).toLowerCase() === key.toLowerCase() ? 'selected' : '';
       optionsHTML += `<option value="${key}" ${isSelected}>${templatesMap[key].label}</option>`;
     });
-    const selectHTML = `<select class="row-template-select" data-index="${index}">${optionsHTML}</select>`;
+    const selectHTML = `<select class="row-tpl" data-index="${index}">${optionsHTML}</select>`;
 
     // Smart action buttons
     const mpActive = multiCheckbox && multiCheckbox.checked;
     const onDE = item.publishedMarkets && item.publishedMarkets.includes('ebay.de');
     const onCA = item.publishedMarkets && item.publishedMarkets.includes('ebay.ca');
-    const btn = (act, cls, label, title) => `<button class="btn ${cls} row-btn" style="padding:4px 8px;font-size:11px;" data-action="${act}" data-index="${index}" title="${title||''}">${label}</button>`;
+    const btn = (act, cls, label, title) => `<button class="rbtn ${cls}" data-action="${act}" data-index="${index}" title="${title||''}">${label}</button>`;
 
     // Notes indicator
     const hasNotes = item.notes && item.notes.trim().length > 0;
-    const notesBtn = `<button class="btn ${hasNotes ? 'btn-primary' : 'btn-outline'} row-btn" style="padding:4px 8px;font-size:11px;" data-action="notes" data-index="${index}" title="${hasNotes ? item.notes.substring(0, 100) : 'Add notes'}">📝</button>`;
+    const notesBtn = `<button class="rbtn ${hasNotes ? 'rbtn-primary' : 'rbtn-ghost'}" data-action="notes" data-index="${index}" title="${hasNotes ? item.notes.substring(0, 100) : 'Add notes'}">📝</button>`;
+    const reorderBtn = `<button class="rbtn rbtn-ghost" data-action="reorder" data-index="${index}" title="Reorder images">🖼️</button>`;
 
     let actionsHTML = '';
     if (item.status === 'Done') {
-      actionsHTML = notesBtn + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = reorderBtn + notesBtn + btn('move-back','rbtn-ghost','↩','Move to queue') + btn('open-dir','rbtn-ghost','📁','Open folder');
       // In Published tab: if multi-post is active and item is missing a market, show the upload button
-      if (mpActive && onDE && !onCA) actionsHTML += btn('post-ca','btn-primary','🇨🇦','Post to ebay.ca');
-      if (mpActive && !onDE && onCA) actionsHTML += btn('post-de','btn-primary','🇩🇪','Post to ebay.de');
+      if (mpActive && onDE && !onCA) actionsHTML += btn('post-ca','rbtn-primary','🇨🇦','Post to ebay.ca');
+      if (mpActive && !onDE && onCA) actionsHTML += btn('post-de','rbtn-primary','🇩🇪','Post to ebay.de');
     } else if (item.status === 'Pending') {
       if (mpActive && onDE && !onCA) {
-        actionsHTML = notesBtn + btn('post-ca','btn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
+        actionsHTML = reorderBtn + notesBtn + btn('post-ca','rbtn-primary','🇨🇦 List','Post to ebay.ca') + btn('mark-both','rbtn-ghost','✔️','Mark both done') + btn('open-dir','rbtn-ghost','📁','Open folder');
       } else if (mpActive && !onDE && onCA) {
-        actionsHTML = notesBtn + btn('post-de','btn-primary','🇩🇪 List','Post to ebay.de') + btn('mark-both','btn-outline','✔️','Mark both done') + btn('open-dir','btn-outline','📁','Open folder');
+        actionsHTML = reorderBtn + notesBtn + btn('post-de','rbtn-primary','🇩🇪 List','Post to ebay.de') + btn('mark-both','rbtn-ghost','✔️','Mark both done') + btn('open-dir','rbtn-ghost','📁','Open folder');
       } else if (mpActive && !onDE && !onCA) {
-        actionsHTML = notesBtn + btn('process','btn-primary','🇩🇪+🇨🇦','List on both') + btn('done','btn-success','✔','Mark done');
+        actionsHTML = reorderBtn + notesBtn + btn('process','rbtn-primary','🇩🇪+🇨🇦','List on both') + btn('done','rbtn-green','✔','Mark done');
       } else {
-        actionsHTML = notesBtn + btn('process','btn-secondary','▶','Process') + btn('done','btn-success','✔','Mark done');
+        actionsHTML = reorderBtn + notesBtn + btn('process','rbtn-ghost','▶','Process') + btn('done','rbtn-green','✔','Mark done');
       }
     } else if (item.status === 'Failed') {
-      actionsHTML = notesBtn + btn('retry','btn-primary','🔄','Retry') + btn('move-back','btn-outline','↩','Move to queue') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = reorderBtn + notesBtn + btn('retry','rbtn-primary','🔄','Retry') + btn('move-back','rbtn-ghost','↩','Move to queue') + btn('open-dir','rbtn-ghost','📁','Open folder');
     } else if (item.status === 'Review') {
       if (item.errorReason === 'No Images') {
-        actionsHTML = notesBtn + btn('upload-imgs','btn-primary','📸') + btn('unzip','btn-secondary','📦') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
+        actionsHTML = reorderBtn + notesBtn + btn('upload-imgs','rbtn-primary','📸') + btn('unzip','rbtn-ghost','📦') + btn('open-dir','rbtn-ghost','📁') + btn('done','rbtn-green','✔');
+      } else if (item.errorReason === 'Only 1 Image') {
+        actionsHTML = reorderBtn + notesBtn + btn('process','rbtn-primary','▶ List','Force-list with 1 image') + btn('upload-imgs','rbtn-ghost','📸') + btn('unzip','rbtn-ghost','📦') + btn('open-dir','rbtn-ghost','📁') + btn('done','rbtn-green','✔');
       } else {
-        actionsHTML = notesBtn + btn('rename','btn-secondary','✏️') + btn('open-dir','btn-outline','📁') + btn('done','btn-success','✔');
+        actionsHTML = reorderBtn + notesBtn + btn('rename','rbtn-ghost','✏️') + btn('open-dir','rbtn-ghost','📁') + btn('done','rbtn-green','✔');
       }
     } else {
-      actionsHTML = notesBtn + btn('done','btn-success','✔','Mark done') + btn('open-dir','btn-outline','📁','Open folder');
+      actionsHTML = reorderBtn + notesBtn + btn('done','rbtn-green','✔','Mark done') + btn('open-dir','rbtn-ghost','📁','Open folder');
     }
 
     row.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:center;">
-        <input type="checkbox" class="row-select" data-index="${index}" ${item.selected ? 'checked' : ''} style="cursor:pointer; width:14px; height:14px; margin:0;">
+        <input type="checkbox" class="row-sel" data-index="${index}" ${item.selected ? 'checked' : ''} style="cursor:pointer; width:14px; height:14px; margin:0;">
       </div>
       <div class="thumb">${thumbHTML}</div>
-      <div class="folder-name" title="${item.name}">${item.name}</div>
+      <div class="fname" title="${item.name}">${item.name}</div>
       <div>
-        <input type="number" class="row-price-input" data-index="${index}" value="${item.price !== undefined ? item.price : 65}" min="0">
+        <input type="number" class="row-price" data-index="${index}" value="${item.price !== undefined ? item.price : 65}" min="0" ${isImported ? `style="border-color:var(--accent);background:#1a1400;" title="Imported price: €${item.price}"` : ''}>
       </div>
       <div>
         ${selectHTML}
       </div>
       <div>
-        <span class="status-pill ${statusClass}" title="${item.errorReason || ''}">${statusLabel}</span>
+        <span class="pill ${statusClass}" title="${item.errorReason || ''}">${statusLabel}</span>
       </div>
       <div class="row-actions">
         ${actionsHTML}
@@ -449,7 +561,7 @@ function renderQueue() {
     `;
 
     // Row Checkbox Event
-    const rowCb = row.querySelector('.row-select');
+    const rowCb = row.querySelector('.row-sel');
     if (rowCb) {
       rowCb.addEventListener('change', (e) => {
         queue[index].selected = e.target.checked;
@@ -470,7 +582,7 @@ function renderQueue() {
       });
     }
 
-    const nameEl = row.querySelector('.folder-name');
+    const nameEl = row.querySelector('.fname');
     if (nameEl) {
       nameEl.style.cursor = 'pointer';
       nameEl.title = 'Double-click to open folder';
@@ -480,7 +592,7 @@ function renderQueue() {
     }
 
     // Sync overrides to queue state and persist to disk
-    const priceIn = row.querySelector('.row-price-input');
+    const priceIn = row.querySelector('.row-price');
     if (priceIn) {
       if (item.price === undefined) item.price = 65;
       priceIn.addEventListener('input', () => {
@@ -490,7 +602,7 @@ function renderQueue() {
       });
     }
 
-    const templateSel = row.querySelector('.row-template-select');
+    const templateSel = row.querySelector('.row-tpl');
     if (templateSel) {
       if (!item.template) item.template = guessTemplate(item.name);
       templateSel.addEventListener('change', () => {
@@ -531,7 +643,7 @@ function renderQueue() {
     const renameBtn = row.querySelector('[data-action="rename"]');
     if (renameBtn) {
       renameBtn.addEventListener('click', () => {
-        const folderNameEl = row.querySelector('.folder-name');
+        const folderNameEl = row.querySelector('.fname');
         const rowActionsEl = row.querySelector('.row-actions');
         if (!folderNameEl || !rowActionsEl) return;
 
@@ -543,8 +655,8 @@ function renderQueue() {
 
         // Replace actions with Save / Cancel buttons
         rowActionsEl.innerHTML = `
-          <button class="btn btn-success row-btn" data-action="save-rename" style="padding: 2px 6px; font-size: 11px;">💾 Save</button>
-          <button class="btn btn-secondary row-btn" data-action="cancel-rename" style="padding: 2px 6px; font-size: 11px;">❌</button>
+          <button class="rbtn rbtn-green" data-action="save-rename">💾 Save</button>
+          <button class="rbtn rbtn-ghost" data-action="cancel-rename">❌</button>
         `;
 
         // Wire up cancel
@@ -595,6 +707,14 @@ function renderQueue() {
     if (notesBtnEl) {
       notesBtnEl.addEventListener('click', () => {
         openNotesModal(item);
+      });
+    }
+
+    // Reorder button — open image reorder modal
+    const reorderBtnEl = row.querySelector('[data-action="reorder"]');
+    if (reorderBtnEl) {
+      reorderBtnEl.addEventListener('click', () => {
+        openReorderModal(item);
       });
     }
 
@@ -844,7 +964,7 @@ function setupDragAndDrop() {
 // ==================== Control Buttons & Automation Triggers ====================
 function updateControlStates() {
   const hasQueue = queue.length > 0;
-  const hasPending = queue.some(item => item.status === 'Pending');
+  const hasPending = queue.some(item => item.status === 'Pending' || item.status === 'Review');
 
   if (isRunning) {
     startBtn.disabled = false;
@@ -953,7 +1073,7 @@ function setupControlButtons() {
       filtered.forEach(item => {
         item.selected = checked;
       });
-      const checkboxes = queueRows.querySelectorAll('.row-select');
+      const checkboxes = queueRows.querySelectorAll('.row-sel');
       checkboxes.forEach(cb => {
         cb.checked = checked;
       });
@@ -1231,6 +1351,27 @@ function setupControlButtons() {
 
   pickBtn.addEventListener('click', selectAndScanFolder);
   rescanBtn.addEventListener('click', scanCurrentFolder);
+
+  // Import Missing Items — read scraped competitor data (read-only)
+  if (importMissingBtn) {
+    importMissingBtn.addEventListener('click', async () => {
+      importMissingBtn.disabled = true;
+      importMissingBtn.textContent = '⏳ Importing...';
+      addLog('[System]: Importing missing items from scraped data...', 'system');
+      try {
+        const res = await window.api.importMissingItems('C:\\Ebay Scraper\\scraped_data\\comparison_report\\missing_items');
+        if (res && res.success) {
+          addLog(`[System]: ✅ Imported ${res.imported} missing items into queue (${res.total} total).`, 'system');
+        } else {
+          addLog(`[System]: Import failed — ${res?.message || 'Unknown error'}`, 'system');
+        }
+      } catch (err) {
+        addLog(`[Import Error]: ${err.message}`, 'system');
+      }
+      importMissingBtn.disabled = false;
+      importMissingBtn.textContent = '📋 Import Missing';
+    });
+  }
 
   // Master "Unzip All" button — extract from all subfolders with ≤1 image
   const unzipAllBtn = document.getElementById('unzip-all-btn');

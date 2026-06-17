@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('api', {
   saveFolderCustomization: (folderName, price, template, notes) => ipcRenderer.invoke('save-folder-customization', { folderName, price, template, notes }),
   unzipFolder: (folderPath) => ipcRenderer.invoke('unzip-folder', folderPath),
   unzipAll: () => ipcRenderer.invoke('unzip-all'),
+  importMissingItems: (folderPath) => ipcRenderer.invoke('import-missing-items', folderPath),
+  getImagesForReorder: (folderPath) => ipcRenderer.invoke('get-images-for-reorder', folderPath),
+  reorderImages: (folderPath, orderedNames) => ipcRenderer.invoke('reorder-images', folderPath, orderedNames),
 
   // Automation control
   startAutomation: (payload) => ipcRenderer.invoke('start-automation', payload),

@@ -5,924 +5,481 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eBay Automation Studio</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
     :root {
       --bg: #020617;
-      --panel: #0f172a;
-      --panel-2: #1e2937;
-      --border: #334155;
+      --surface: #0f172a;
+      --surface2: #1a2332;
+      --border: #1e3a5f;
+      --border-light: #263548;
       --accent: #f59e0b;
-      --accent-2: #ef4444;
-      --text: #f1f5f9;
+      --accent-glow: rgba(245, 158, 11, 0.35);
+      --danger: #ef4444;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
       --muted: #64748b;
       --success: #22c55e;
       --warning: #eab308;
+      --radius: 8px;
+      --radius-lg: 12px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      margin: 0;
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
-      overflow: hidden;
       height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
       user-select: none;
+      -webkit-user-select: none;
     }
 
-    /* Custom Title Bar - Premium Look */
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* ── Title Bar ── */
     #titlebar {
-      height: 42px;
-      background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+      height: 38px;
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 16px 0 20px;
-      -webkit-app-region: drag;
+      padding: 0 14px;
       flex-shrink: 0;
+      -webkit-app-region: drag;
       z-index: 100;
     }
-
-    #titlebar .left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
+    #titlebar .left { display: flex; align-items: center; gap: 10px; }
     #titlebar .logo {
-      width: 24px;
-      height: 24px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      width: 26px; height: 26px;
+      background: linear-gradient(135deg, var(--accent), var(--danger));
       border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: white;
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #fff;
     }
-
-    #titlebar .title {
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: -.2px;
-    }
+    #titlebar .title { font-size: 13px; font-weight: 600; letter-spacing: -0.2px; color: var(--text); }
 
     .browser-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      padding: 3px 10px;
-      background: #0f172a;
-      border: 1px solid var(--border);
-      border-radius: 9999px;
-      -webkit-app-region: no-drag;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10.5px; padding: 2px 10px;
+      background: var(--surface2); border: 1px solid var(--border-light);
+      border-radius: 99px; -webkit-app-region: no-drag;
     }
-
     .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #64748b;
-      box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.2);
-      transition: all .2s ease;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); transition: background .2s;
     }
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .status-dot.connecting { background: var(--warning); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-    .status-dot.connected {
-      background: var(--success);
-      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
-    }
-
-    .status-dot.connecting {
-      background: var(--warning);
-      box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.25);
-      animation: pulse 1.5s infinite;
-    }
-
-    .window-controls {
-      display: flex;
-      gap: 4px;
-      -webkit-app-region: no-drag;
-    }
-
+    .window-controls { display: flex; gap: 2px; -webkit-app-region: no-drag; }
     .window-controls button {
-      width: 28px;
-      height: 24px;
-      border: none;
-      background: transparent;
-      color: #94a3b8;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      transition: all .1s ease;
-      cursor: pointer;
+      width: 28px; height: 24px; border: none; background: transparent;
+      color: #94a3b8; font-size: 14px; border-radius: 4px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
+    .window-controls button:hover { background: var(--surface2); color: #fff; }
+    .window-controls button.close:hover { background: var(--danger); }
 
-    .window-controls button:hover {
-      background: #1e2937;
-      color: #f1f5f9;
+    /* Status bar pills in titlebar */
+    .tb-btn {
+      font-size: 9px; padding: 1px 6px; border-radius: 4px;
+      border: 1px solid var(--border-light); background: var(--surface2);
+      color: var(--text-dim); cursor: pointer; -webkit-app-region: no-drag;
     }
+    .tb-btn:hover { background: var(--border); color: #fff; }
 
-    .window-controls button.close:hover {
-      background: #ef4444;
-      color: white;
-    }
-
-    /* Main App Content */
+    /* ── App Content ── */
     .app-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      padding: 10px 16px 8px;
-      gap: 10px;
-      overflow: hidden;
+      flex: 1; display: flex; flex-direction: column;
+      padding: 8px 12px; gap: 6px; overflow: hidden;
       -webkit-app-region: no-drag;
     }
 
-    /* Folder Selector - Compact Premium Row */
-    .folder-selector {
-      background: linear-gradient(145deg, #0f172a, #020617);
-      border: 1px dashed #475569;
-      border-radius: 10px;
-      padding: 6px 12px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
-      overflow: hidden;
+    /* ── Folder Selector ── */
+    .folder-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1.5px dashed var(--border);
+      border-radius: var(--radius-lg); padding: 7px 14px;
+      flex-shrink: 0; transition: border .2s;
+    }
+    .folder-bar.dragover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .folder-bar .f-icon {
+      font-size: 18px; width: 34px; height: 34px;
+      background: var(--surface2); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .folder-bar .f-path {
+      flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+      color: var(--text-dim); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; background: var(--bg); padding: 5px 10px;
+      border-radius: 6px; border: 1px solid var(--border-light);
+    }
+    .folder-bar .f-label {
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
     }
 
-    .folder-selector.dragover {
-      border-color: var(--accent);
-      background: linear-gradient(145deg, #1e2937, #0f172a);
-      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1);
-    }
+    /* ── Queue Section ── */
+    .queue-section { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 
-    .folder-icon {
-      font-size: 20px;
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, #1e2937, #334155);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
+    .queue-toolbar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     }
-
-    .folder-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .queue-tabs {
+      display: flex; gap: 2px; background: var(--surface);
+      padding: 2px; border-radius: var(--radius); border: 1px solid var(--border-light);
     }
-
-    .folder-info .label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 0;
-      white-space: nowrap;
+    .tab-btn {
+      background: transparent; color: var(--muted); border: none;
+      padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all .15s;
     }
-
-    .folder-info .path {
-      flex: 1;
-      font-family: ui-monospace, monospace;
-      font-size: 12px;
-      color: #cbd5e1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      background: #020617;
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { background: var(--surface2); color: var(--text); }
+    .tab-count {
+      font-size: 10px; background: var(--bg); padding: 1px 6px;
+      border-radius: 10px; color: var(--muted);
     }
+    .tab-btn.active .tab-count { background: var(--border); color: var(--text); }
 
-    .folder-selector button {
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all .15s ease;
-      box-shadow: 0 4px 12px -2px rgb(245 158 11 / 0.4);
-      white-space: nowrap;
+    .qt-spacer { flex: 1; }
+    #search-input {
+      width: 180px; background: var(--surface); border: 1px solid var(--border-light);
+      border-radius: var(--radius); color: var(--text); padding: 5px 10px;
+      font-size: 11.5px; outline: none; transition: border .15s;
     }
+    #search-input:focus { border-color: var(--accent); }
 
-    .folder-selector button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 20px -4px rgb(245 158 11 / 0.5);
-    }
-
-    /* Queue Section */
-    .queue-section {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .queue-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      padding: 0 4px;
-    }
-
-    .queue-header h2 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: -.3px;
-    }
-
-    .queue-count {
-      font-size: 12px;
-      color: var(--muted);
-      background: #1e2937;
-      padding: 2px 9px;
-      border-radius: 999px;
-      font-weight: 500;
-    }
-
+    /* ── Queue Table ── */
     .queue-table {
-      flex: 1;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      flex: 1; min-height: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden;
+      display: flex; flex-direction: column;
     }
-
-    .queue-table-header {
+    .qt-header {
       display: grid;
-      grid-template-columns: 30px 40px 1fr 80px 120px 100px 220px;
-      gap: 8px;
-      padding: 6px 12px;
-      background: #1e2937;
-      font-size: 10px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      border-bottom: 1px solid var(--border);
+      grid-template-columns: 32px 42px 1fr 68px 112px 85px 190px;
+      gap: 8px; padding: 6px 12px;
+      background: var(--surface2); font-size: 10px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
-
-    .queue-rows {
-      flex: 1;
-      overflow-y: auto;
-      padding: 2px 0;
-    }
+    .queue-rows { flex: 1; overflow-y: auto; }
 
     .queue-row {
       display: grid;
-      grid-template-columns: 30px 40px 1fr 60px 100px 80px 160px;
-      gap: 8px;
-      align-items: center;
-      padding: 4px 12px;
-      border-bottom: 1px solid #1e2937;
-      transition: background .1s ease;
+      grid-template-columns: 32px 42px 1fr 68px 112px 85px 190px;
+      gap: 8px; align-items: center; padding: 5px 12px;
+      border-bottom: 1px solid rgba(30, 58, 95, 0.4);
+      transition: background .12s;
     }
+    .queue-row:hover { background: rgba(30, 58, 95, 0.25); }
+    .queue-row:last-child { border-bottom: none; }
 
-    .row-price-input {
-      width: 68px;
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      padding: 2px 6px;
-      font-size: 12px;
-      font-weight: 600;
-      outline: none;
-    }
-    .row-price-input:focus {
-      border-color: var(--accent);
-    }
-
-    .row-template-select {
-      width: 124px;
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      padding: 2px 4px;
-      font-size: 11.5px;
-      font-weight: 500;
-      outline: none;
-      cursor: pointer;
-    }
-    .row-template-select:focus {
-      border-color: var(--accent);
-    }
-
-    /* Modal Styles */
-    .modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-backdrop {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      background: rgba(2, 6, 23, 0.7);
-      backdrop-filter: blur(8px);
-    }
-
-    .modal-content {
-      position: relative;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      width: 720px;
-      height: 520px;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.5);
-      animation: modalScale 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    @keyframes modalScale {
-      from { transform: scale(0.95); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
-
-    .modal-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .modal-header h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      font-family: 'Space Grotesk', sans-serif;
-    }
-
-    .modal-close {
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 24px;
-      cursor: pointer;
-      line-height: 1;
-      padding: 4px;
-    }
-    .modal-close:hover {
-      color: var(--text);
-    }
-
-    .modal-body {
-      flex: 1;
-      padding: 20px;
-      overflow: hidden;
-    }
-
-    .templates-split {
-      display: flex;
-      gap: 20px;
-      height: 100%;
-    }
-
-    .templates-list-pane {
-      width: 220px;
-      border-right: 1px solid var(--border);
-      padding-right: 16px;
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-
-    #templates-list-items {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .template-item {
-      padding: 8px 12px;
-      border-radius: 8px;
-      background: #1e2937;
-      border: 1px solid var(--border);
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .template-item:hover {
-      background: #334155;
-      border-color: #475569;
-    }
-    .template-item.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: white;
-    }
-    .template-item.system-default {
-      border-style: dashed;
-      opacity: 0.8;
-    }
-
-    .templates-edit-pane {
-      flex: 1;
-      height: 100%;
-    }
-
-    .input-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .input-group label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .modal-input {
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 8px 12px;
-      font-size: 13px;
-      outline: none;
-    }
-    .modal-input:focus {
-      border-color: var(--accent);
-    }
-
-    .queue-row:hover {
-      background: #1e2937;
-    }
-
-    .queue-row:last-child {
-      border-bottom: none;
-    }
-
+    .row-sel { width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent); }
     .thumb {
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-      overflow: hidden;
-      background: #1e2937;
-      border: 1px solid #334155;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      flex-shrink: 0;
+      width: 34px; height: 34px; border-radius: 6px; overflow: hidden;
+      background: var(--bg); border: 1px solid var(--border-light);
+      display: flex; align-items: center; justify-content: center;
     }
-
-    .thumb img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .fname {
+      font-weight: 500; font-size: 12.5px; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
     }
-
-    .folder-name {
-      font-weight: 500;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      padding-right: 8px;
+    .inline-rename-input {
+      width: 100%; background: var(--bg); color: var(--text);
+      border: 1px solid var(--accent); padding: 3px 8px; border-radius: 6px;
+      font-size: 12.5px; font-weight: 500; outline: none;
     }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 999px;
-      letter-spacing: .2px;
+    .row-price {
+      width: 60px; background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: 6px; color: var(--text); padding: 3px 6px;
+      font-size: 11.5px; font-weight: 600; outline: none; text-align: center;
     }
-
-    .status-pending { background: #334155; color: #94a3b8; }
-    .status-processing {
-      background: linear-gradient(90deg, #f59e0b, #ef4444);
-      color: white;
-      box-shadow: 0 0 0 1px rgba(245, 158, 11, .4);
+    .row-price:focus { border-color: var(--accent); }
+    .row-tpl {
+      width: 105px; background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: 6px; color: var(--text); padding: 3px 4px;
+      font-size: 10.5px; font-weight: 500; outline: none; cursor: pointer;
     }
-    .status-done { background: #166534; color: #4ade80; }
-    .status-failed { background: #450a0a; color: #fda4af; }
-    .status-review { background: #7c2d12; color: #fdba74; }
+    .row-tpl:focus { border-color: var(--accent); }
 
-    .row-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
+    .pill {
+      display: inline-flex; align-items: center; gap: 2px;
+      font-size: 10px; font-weight: 600; padding: 3px 10px;
+      border-radius: 99px; white-space: nowrap;
     }
+    .pill-pending { background: #1e3a5f; color: #94a3b8; border: 1px solid rgba(148,163,184,.15); }
+    .pill-processing { background: linear-gradient(90deg, #f59e0b, #ef4444); color: #fff; }
+    .pill-done { background: #14532d; color: #4ade80; border: 1px solid rgba(74,222,128,.15); }
+    .pill-failed { background: #450a0a; color: #fda4af; border: 1px solid rgba(253,164,175,.15); }
+    .pill-review { background: #7c2d12; color: #fdba74; border: 1px solid rgba(253,186,116,.2); }
 
-    .row-btn {
-      padding: 4px 10px;
-      font-size: 11px;
-      border-radius: 9px;
+    .row-actions { display: flex; gap: 3px; justify-content: flex-end; flex-wrap: wrap; }
+    .rbtn {
+      font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px;
+      padding: 3px 8px; border-radius: 6px; border: none; cursor: pointer;
+      white-space: nowrap; transition: all .12s; display: inline-flex; align-items: center; gap: 3px;
     }
+    .rbtn-primary { background: var(--accent); color: #000; }
+    .rbtn-primary:hover { filter: brightness(1.1); }
+    .rbtn-green { background: rgba(22,101,52,.8); color: #dcfce7; border: 1px solid rgba(74,222,128,.2); }
+    .rbtn-green:hover { background: rgba(21,128,61,.85); }
+    .rbtn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border-light); }
+    .rbtn-ghost:hover { background: var(--surface2); color: var(--text); }
+    .rbtn-red { background: rgba(127,29,29,.6); color: #fda4af; border: 1px solid rgba(253,164,175,.15); }
+    .rbtn-red:hover { background: rgba(127,29,29,.85); }
 
-    .btn-success {
-      background: rgba(22, 101, 52, .72);
-      border: 1px solid rgba(74, 222, 128, .34);
-      color: #dcfce7;
-    }
-
-    .btn-success:hover:not(:disabled) {
-      background: rgba(21, 128, 61, .88);
-    }
-
-    /* Control Panel */
-    .control-panel {
-      display: flex;
+    /* ── Control Bar ── */
+    .control-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 8px 14px; flex-shrink: 0;
       flex-wrap: wrap;
-      align-items: flex-end;
-      gap: 8px 12px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 8px 16px;
-      flex-shrink: 0;
     }
+    .ctrl-group { display: flex; align-items: flex-end; gap: 6px; }
+    .ctrl-field { display: flex; flex-direction: column; gap: 3px; }
+    .ctrl-field label {
+      font-size: 9.5px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .4px; padding-left: 1px;
+    }
+    .ctrl-input {
+      background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: 6px; color: var(--text); padding: 4px 8px;
+      font-size: 12px; font-weight: 600; outline: none; font-family: 'Inter', sans-serif;
+      transition: border .15s;
+    }
+    .ctrl-input:focus { border-color: var(--accent); }
+    .ctrl-input.price { width: 62px; }
+    .ctrl-input.title-tpl { width: 240px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .ctrl-input.key { width: 100px; font-size: 10.5px; }
+    .ctrl-input.max { width: 44px; text-align: center; }
+    .ctrl-select {
+      background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: 6px; color: var(--text); padding: 4px 6px;
+      font-size: 11px; font-weight: 600; outline: none; cursor: pointer;
+    }
+    .ctrl-select:focus { border-color: var(--accent); }
 
-    .price-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    .ctrl-toggle {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--bg); border: 1px solid var(--border-light);
+      border-radius: 6px; padding: 3px 8px; cursor: pointer;
     }
+    .ctrl-toggle input[type=checkbox] { width: 13px; height: 13px; cursor: pointer; accent-color: var(--accent); }
+    .ctrl-toggle span { font-size: 10.5px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
 
-    .price-group label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #64748b;
-      padding-left: 2px;
-    }
+    .ctrl-divider { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
 
-    .price-input-wrapper {
-      display: flex;
-      align-items: center;
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
+    .spacer { flex: 1; min-width: 8px; }
 
-    .price-input-wrapper span {
-      padding: 0 8px;
-      color: #64748b;
-      font-weight: 600;
-      font-size: 13px;
+    /* Action buttons */
+    #pause-btn, #start-btn {
+      font-family: 'Inter', sans-serif; font-weight: 700; border: none;
+      border-radius: var(--radius); cursor: pointer; padding: 9px 18px;
+      font-size: 13px; transition: all .15s; white-space: nowrap;
     }
+    #pause-btn {
+      background: var(--surface2); color: var(--text-dim);
+      border: 1px solid var(--border-light);
+    }
+    #pause-btn:hover:not(:disabled) { background: var(--border); color: #fff; }
+    #start-btn {
+      background: linear-gradient(135deg, var(--accent), #ea580c);
+      color: #fff; box-shadow: 0 2px 12px var(--accent-glow);
+    }
+    #start-btn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+    #start-btn:disabled, #pause-btn:disabled { opacity: .4; cursor: not-allowed; filter: none; transform: none; }
 
-    .price-input-wrapper input {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-size: 14px;
-      font-weight: 600;
-      width: 64px;
-      padding: 4px 0;
-      outline: none;
-    }
-
-    /* Title template input (mirrors price-group for consistency) */
-    .title-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      width: 260px;
-    }
-
-    #search-input {
-      transition: all 0.15s ease;
-    }
-    #search-input:focus {
-      border-color: var(--accent);
-      background: #1e2937 !important;
-      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
-    }
-
-    @keyframes slideDown {
-      from { transform: translateY(-8px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
-    #image-dropzone {
-      border: 2px dashed var(--border);
-      border-radius: 10px;
-      padding: 30px;
-      text-align: center;
-      background: #020617;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-    #image-dropzone.dragover {
-      border-color: var(--accent);
-      background: #0f172a;
-      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1);
-    }
-    .image-preview-card {
-      position: relative;
-      aspect-ratio: 1;
-      border-radius: 6px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: #1e2937;
-    }
-    .image-preview-card img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .image-preview-card .remove-btn {
-      position: absolute;
-      top: 2px;
-      right: 2px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: rgba(0,0,0,0.6);
-      color: white;
-      border: none;
-      font-size: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .title-group label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #64748b;
-      padding-left: 2px;
-    }
-
-    .title-input-wrapper {
-      display: flex;
-      align-items: center;
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      width: 100%;
-    }
-
-    .title-input-wrapper input {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-size: 12px;
-      font-weight: 600;
-      width: 100%;
-      padding: 4px 8px;
-      outline: none;
-      font-family: ui-monospace, monospace;
-    }
-
-    .btn {
-      font-weight: 600;
-      font-size: 12px;
-      padding: 6px 14px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all .15s cubic-bezier(0.4, 0.0, 0.2, 1);
-      white-space: nowrap;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #f59e0b, #ef4444);
-      color: white;
-      box-shadow: 0 6px 16px -3px rgb(245 158 11 / 0.45),
-                  0 2px 4px -2px rgb(0 0 0 / 0.3);
-      font-size: 12.5px;
-      padding: 8px 20px;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 22px -4px rgb(245 158 11 / 0.5);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .btn-secondary {
-      background: #1e2937;
-      color: #e2e8f0;
-      border: 1px solid #475569;
-    }
-
-    .btn-secondary:hover {
-      background: #334155;
-      border-color: #64748b;
-    }
-
-    .btn-danger {
-      background: #450a0a;
-      color: #fda4af;
-      border: 1px solid #7f1d1d;
-    }
-
-    .btn-outline {
-      background: transparent;
-      color: #94a3b8;
-      border: 1px solid #475569;
-    }
-    .btn-outline:hover {
-      background: #1e2937;
-      color: #e2e8f0;
-      border-color: #64748b;
-    }
-
-    /* Live Log Console */
+    /* ── Log Console ── */
     .log-console {
-      background: #000000;
-      border-top: 1px solid #1f2937;
-      height: 90px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 11px;
-      line-height: 1.3;
-      color: #4ade80;
-      box-shadow: 0 -4px 12px rgb(0 0 0 / 0.4);
+      background: #000; border-top: 1px solid var(--border);
+      height: 120px; flex-shrink: 0; display: flex; flex-direction: column;
+      font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+      font-size: 10.5px; line-height: 1.4; color: #4ade80;
     }
-
     .log-header {
-      height: 20px;
-      background: #111111;
-      color: #64748b;
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      padding: 0 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid #1f2937;
-      flex-shrink: 0;
+      height: 22px; background: #0a0a0a; color: var(--muted);
+      font-family: 'Inter', sans-serif; font-size: 9px; font-weight: 700;
+      letter-spacing: .8px; padding: 0 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #1a1a1a; flex-shrink: 0;
     }
-
     .log-content {
-      flex: 1;
-      padding: 8px 14px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      scrollbar-width: thin;
-      user-select: text;
-      -webkit-user-select: text;
+      flex: 1; padding: 6px 12px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-word;
+      user-select: text; -webkit-user-select: text;
     }
-
-    .log-line {
-      margin: 1px 0;
-    }
-
+    .log-content::-webkit-scrollbar-thumb { background: #1a3a2a; }
     .log-line.system { color: #64748b; }
-    .log-line.grok { color: #c084fc; }
-    .log-line.marketplace { color: #f59e0b; }
     .log-line.scanner { color: #4ade80; }
+    .log-line.marketplace { color: #f59e0b; }
+    .log-line.ai { color: #c084fc; }
 
+    /* ── Empty State ── */
     .empty-state {
-      padding: 40px 20px;
-      text-align: center;
-      color: #475569;
-      font-size: 13.5px;
+      padding: 32px 20px; text-align: center; color: #475569;
+      font-size: 13px; line-height: 1.6;
+    }
+    .empty-state .icon { font-size: 32px; margin-bottom: 6px; opacity: .4; }
+
+    /* ── Bulk Panel ── */
+    #bulk-edit-panel {
+      display: none; align-items: center; gap: 10px;
+      background: var(--surface2); border: 1px solid var(--accent);
+      border-radius: var(--radius); padding: 6px 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3); flex-shrink: 0;
+    }
+    #bulk-edit-panel .bulk-label {
+      font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase;
     }
 
-    .empty-state .icon {
-      font-size: 36px;
-      margin-bottom: 8px;
-      opacity: .6;
+    /* ── Multi Panel Dropdown ── */
+    #multi-panel {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
+      z-index: 500; background: var(--surface); border: 1px solid var(--accent);
+      border-radius: var(--radius-lg); padding: 8px 12px; min-width: 150px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.6);
+    }
+    #multi-panel label {
+      cursor: pointer; display: flex; align-items: center; gap: 6px;
+      color: var(--text); padding: 3px 0; font-size: 11px; font-weight: 500;
+    }
+    #multi-panel input[type=checkbox] { accent-color: var(--accent); }
+
+    /* ── Modals ── */
+    .modal {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-backdrop {
+      position: absolute; width: 100%; height: 100%;
+      background: rgba(2,6,23,.75); backdrop-filter: blur(8px);
+    }
+    .modal-content {
+      position: relative; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; width: 680px; max-height: 80vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 48px rgba(0,0,0,.5);
+      animation: modalIn .2s ease;
+    }
+    @keyframes modalIn { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { font-size: 14px; font-weight: 700; }
+    .modal-close {
+      background: none; border: none; color: var(--muted);
+      font-size: 22px; cursor: pointer; line-height: 1; padding: 4px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { flex: 1; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* Templates modal split */
+    .tpl-split { display: flex; gap: 16px; height: 100%; min-height: 360px; }
+    .tpl-list { width: 200px; border-right: 1px solid var(--border); padding-right: 12px; display: flex; flex-direction: column; }
+    .tpl-list-items { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .tpl-item {
+      padding: 7px 10px; border-radius: 6px; background: var(--surface2);
+      border: 1px solid var(--border-light); cursor: pointer; font-size: 12px;
+      font-weight: 500; transition: all .12s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tpl-item:hover { background: var(--border); }
+    .tpl-item.active { background: var(--accent); border-color: var(--accent); color: #000; }
+    .tpl-edit { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+    .input-group { display: flex; flex-direction: column; gap: 4px; }
+    .input-group label {
+      font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px;
+    }
+    .modal-input {
+      background: var(--bg); border: 1px solid var(--border-light); border-radius: 6px;
+      color: var(--text); padding: 8px 10px; font-size: 12px; font-family: 'Inter', sans-serif; outline: none;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-textarea {
+      flex: 1; resize: none; font-family: 'Inter', sans-serif; line-height: 1.5;
     }
 
-    /* Premium touches */
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #94a3b8;
-      margin-bottom: 6px;
-      padding-left: 2px;
+    /* Image manager */
+    #image-dropzone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 24px; text-align: center; background: var(--bg); cursor: pointer;
     }
-    .queue-tabs {
-      display: flex;
-      gap: 4px;
-      background: #0f172a;
-      padding: 3px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
+    #image-dropzone.dragover { border-color: var(--accent); }
+    .img-grid {
+      display: grid; grid-template-columns: repeat(5,1fr); gap: 6px;
+      overflow-y: auto; flex: 1; padding: 4px; border: 1px solid var(--border-light);
+      border-radius: 6px; background: var(--bg);
     }
-    .tab-btn {
-      background: transparent;
-      color: var(--muted);
-      border: none;
-      padding: 5px 14px;
-      border-radius: 6px;
-      font-size: 12.5px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.15s ease;
+    .img-card {
+      position: relative; aspect-ratio: 1; border-radius: 4px;
+      overflow: hidden; border: 1px solid var(--border-light); background: var(--surface2);
     }
-    .tab-btn:hover {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.03);
+    .img-card img { width: 100%; height: 100%; object-fit: cover; }
+    .img-card .del {
+      position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+      border-radius: 50%; background: rgba(0,0,0,.7); color: #fff;
+      border: none; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    .tab-btn.active {
-      background: var(--panel-2);
-      color: var(--text);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+
+    /* Image reorder grid */
+    .reorder-card {
+      position: relative; aspect-ratio: 1; border-radius: 6px;
+      overflow: hidden; border: 3px solid transparent;
+      cursor: pointer; background: var(--surface2); transition: all .15s;
     }
-    .tab-btn .tab-count {
-      font-size: 10.5px;
-      background: #1e2937;
-      padding: 1px 6px;
-      border-radius: 10px;
-      color: #64748b;
-      font-weight: 500;
-      transition: all 0.15s ease;
+    .reorder-card:hover { border-color: var(--accent); transform: scale(1.03); }
+    .reorder-card.selected { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+    .reorder-card img { width: 100%; height: 100%; object-fit: cover; }
+    .reorder-card .order-badge {
+      position: absolute; top: 4px; left: 4px;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--accent); color: #000; font-size: 11px;
+      font-weight: 800; display: flex; align-items: center;
+      justify-content: center; display: none;
     }
-    .tab-btn.active .tab-count {
-      background: var(--border);
-      color: var(--text);
+    .reorder-card.selected .order-badge { display: flex; }
+
+    /* Quick utility buttons */
+    .util-btn {
+      font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px;
+      padding: 4px 10px; border-radius: 6px; cursor: pointer; border: none;
+      white-space: nowrap; transition: all .12s;
     }
+    .util-btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border-light); }
+    .util-btn-ghost:hover { background: var(--surface2); color: var(--text); }
   </style>
 </head>
 <body>
-  <!-- Premium Custom Title Bar -->
+  <!-- ── Title Bar ── -->
   <div id="titlebar">
     <div class="left">
       <div class="logo">E</div>
-      <div>
-        <span class="title">eBay Automation Studio</span>
-      </div>
+      <span class="title">eBay Automation Studio</span>
     </div>
-
     <div class="browser-status">
       <span class="status-dot" id="browser-dot"></span>
-      <span id="browser-text">Automation Chrome (CDP): <strong id="browser-status-text">Disconnected</strong></span>
-      <button id="browser-toggle" style="margin-left:6px; font-size:10px; padding:1px 7px; border-radius:4px; border:1px solid #475569; background:#1e2937; color:#cbd5e1; cursor:pointer;">Launch</button>
-      <!-- Persistent login / "copy cookies" tools -->
-      <button id="open-profile-btn" title="Open automation profile folder (where cookies & login live)" style="margin-left:4px; font-size:11px; padding:1px 5px; border-radius:4px; border:1px solid #475569; background:#1e2937; color:#94a3b8; cursor:pointer;">📁</button>
-      <button id="export-cookies-btn" title="Backup current eBay login (export cookies)" style="margin-left:2px; font-size:11px; padding:1px 5px; border-radius:4px; border:1px solid #475569; background:#1e2937; color:#94a3b8; cursor:pointer;">💾</button>
-      <button id="restore-cookies-btn" title="Restore eBay login from backup (inject cookies)" style="margin-left:2px; font-size:11px; padding:1px 5px; border-radius:4px; border:1px solid #475569; background:#1e2937; color:#94a3b8; cursor:pointer;">↩︎</button>
+      <span id="browser-status-text" style="font-size:10px;">Disconnected</span>
+      <button class="tb-btn" id="browser-toggle">Launch</button>
+      <button class="tb-btn" id="open-profile-btn" title="Profile folder">📁</button>
+      <button class="tb-btn" id="export-cookies-btn" title="Backup cookies">💾</button>
+      <button class="tb-btn" id="restore-cookies-btn" title="Restore cookies">↩︎</button>
     </div>
-
     <div class="window-controls">
       <button id="min-btn" title="Minimize">−</button>
       <button id="max-btn" title="Maximize">□</button>
@@ -931,226 +488,182 @@
   </div>
 
   <div class="app-content">
-    <!-- Target Folder Selector -->
-    <div class="folder-selector" id="drop-zone">
-      <div class="folder-icon">📦</div>
-      <div class="folder-info">
-        <div class="label">Product Folder:</div>
-        <div class="path" id="selected-path">No folder selected — drop a folder or click Choose Folder</div>
-      </div>
-      <button id="pick-folder-btn">Choose Folder</button>
+    <!-- ── Folder Bar ── -->
+    <div class="folder-bar" id="drop-zone">
+      <div class="f-icon">📦</div>
+      <span class="f-label">Folder</span>
+      <div class="f-path" id="selected-path">No folder selected — drop a folder or click Browse</div>
+      <button id="pick-folder-btn" class="util-btn" style="background:linear-gradient(135deg,var(--accent),var(--danger));color:#fff;border:none;padding:6px 14px;font-size:11.5px;">Browse</button>
+      <button id="import-missing-btn" class="util-btn util-btn-ghost" title="Import scraped competitor listings from missing_items folder">📋 Import Missing</button>
     </div>
 
-    <!-- Queue Table -->
+    <!-- ── Queue ── -->
     <div class="queue-section">
-      <div class="queue-header">
+      <div class="queue-toolbar">
         <div class="queue-tabs">
-          <button class="tab-btn active" id="tab-pending">
-            Product Queue <span class="tab-count" id="queue-count-pending">0</span>
-          </button>
-          <button class="tab-btn" id="tab-published">
-            Published History <span class="tab-count" id="queue-count-published">0</span>
-          </button>
-          <button class="tab-btn" id="tab-pub-de" style="display:none;">
-            <span style="font-size:14px;">🇩🇪</span> DE <span class="tab-count" id="queue-count-pub-de">0</span>
-          </button>
-          <button class="tab-btn" id="tab-pub-ca" style="display:none;">
-            <span style="font-size:14px;">🇨🇦</span> CA <span class="tab-count" id="queue-count-pub-ca">0</span>
-          </button>
+          <button class="tab-btn active" id="tab-pending">Queue <span class="tab-count" id="queue-count-pending">0</span></button>
+          <button class="tab-btn" id="tab-published">Published <span class="tab-count" id="queue-count-published">0</span></button>
+          <button class="tab-btn" id="tab-pub-de" style="display:none;">🇩🇪 DE <span class="tab-count" id="queue-count-pub-de">0</span></button>
+          <button class="tab-btn" id="tab-pub-ca" style="display:none;">🇨🇦 CA <span class="tab-count" id="queue-count-pub-ca">0</span></button>
         </div>
-        <div style="display:flex; align-items:center; gap:8px; flex:1; margin-left:16px; max-width:260px;">
-          <input type="text" id="search-input" placeholder="🔍 Search products..." style="width:100%; background:#0f172a; border:1px solid var(--border); border-radius:8px; color:var(--text); padding:5px 10px; font-size:12px; outline:none;">
-        </div>
-        <span id="queue-count" style="display:none;">(0 folders)</span>
-        <div style="display:flex; gap:8px;">
-          <button id="run-selected-btn" class="btn btn-primary" style="padding:6px 14px; font-size:12px; display:none;">▶ Run Selected</button>
-          <button id="unzip-all-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">📸 Extract Photos</button>
-          <button id="clean-names-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">🧹 Clean Names</button>
-          <button id="rescan-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">Rescan</button>
-          <button id="clear-queue-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">Clear</button>
-        </div>
+        <input type="text" id="search-input" placeholder="🔍 Search products...">
+        <div class="qt-spacer"></div>
+        <button id="run-selected-btn" class="util-btn util-btn-ghost" style="display:none;">▶ Selected</button>
+        <button id="unzip-all-btn" class="util-btn util-btn-ghost">📸 Extract</button>
+        <button id="clean-names-btn" class="util-btn util-btn-ghost">🧹 Clean</button>
+        <button id="rescan-btn" class="util-btn util-btn-ghost">↻ Rescan</button>
+        <button id="clear-queue-btn" class="util-btn util-btn-ghost">✕ Clear</button>
       </div>
 
-      <!-- Bulk Edit Panel (hidden by default) -->
-      <div id="bulk-edit-panel" style="display:none; align-items:center; gap:12px; background:var(--panel-2); border:1px solid var(--accent); border-radius:10px; padding:6px 16px; margin-bottom:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideDown 0.2s ease;">
-        <span id="bulk-select-count" style="font-size:12px; font-weight:600; color:var(--text);">0 items selected</span>
-        <div style="flex:1;"></div>
-
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label style="font-size:10px; font-weight:600; color:#cbd5e1; text-transform:uppercase;">Bulk Price:</label>
-          <input type="number" id="bulk-price-input" placeholder="Keep same" min="0" style="width:80px; background:#020617; border:1px solid var(--border); border-radius:6px; color:var(--text); padding:3px 8px; font-size:12px; outline:none;">
-        </div>
-
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label style="font-size:10px; font-weight:600; color:#cbd5e1; text-transform:uppercase;">Bulk Template:</label>
-          <select id="bulk-template-select" style="background:#020617; border:1px solid var(--border); border-radius:6px; color:var(--text); padding:3px 8px; font-size:12px; outline:none; cursor:pointer;">
-            <option value="">Keep same</option>
-            <option value="deepseek">✨ DeepSeek AI Description</option>
-          </select>
-        </div>
-
-        <button id="bulk-apply-btn" class="btn btn-primary" style="padding:4px 12px; font-size:12px;">Apply to Selected</button>
-        <button id="bulk-deepseek-btn" class="btn" style="padding:4px 12px; font-size:12px; background:#1e3a5f; color:#93c5fd; border:1px solid #2563eb; border-radius:6px; cursor:pointer;">✨ Rewrite with DeepSeek</button>
-        <button id="bulk-cancel-btn" class="btn btn-secondary" style="padding:4px 12px; font-size:12px;">Cancel</button>
+      <!-- Bulk Edit Panel -->
+      <div id="bulk-edit-panel">
+        <span class="bulk-label" id="bulk-select-count">0 items</span>
+        <div class="spacer"></div>
+        <span class="bulk-label">Price</span>
+        <input type="number" id="bulk-price-input" placeholder="—" class="ctrl-input price">
+        <span class="bulk-label">Template</span>
+        <select id="bulk-template-select" class="ctrl-select">
+          <option value="">Keep same</option>
+          <option value="deepseek">✨ AI Description</option>
+        </select>
+        <button id="bulk-apply-btn" class="rbtn rbtn-primary">Apply</button>
+        <button id="bulk-deepseek-btn" class="rbtn" style="background:#1e3a5f;color:#93c5fd;border:1px solid #2563eb;">✨ Rewrite AI</button>
+        <button id="bulk-cancel-btn" class="rbtn rbtn-ghost">Cancel</button>
       </div>
 
       <div class="queue-table">
-        <div class="queue-table-header" style="grid-template-columns: 30px 40px 1fr 60px 100px 80px 160px;">
-          <div style="display:flex; align-items:center; justify-content:center;">
-            <input type="checkbox" id="bulk-select-all" style="cursor:pointer; width:14px; height:14px; margin:0;">
+        <div class="qt-header">
+          <div style="display:flex;align-items:center;justify-content:center;">
+            <input type="checkbox" id="bulk-select-all" class="row-sel">
           </div>
           <div></div>
-          <div>FOLDER / PRODUCT</div>
+          <div>PRODUCT</div>
           <div>PRICE</div>
           <div>TEMPLATE</div>
           <div>STATUS</div>
           <div style="text-align:right;">ACTIONS</div>
         </div>
         <div class="queue-rows" id="queue-rows">
-          <!-- Populated dynamically by JS -->
           <div class="empty-state">
             <div class="icon">📁</div>
-            <div>Select a target folder above to scan for product subfolders.</div>
+            <div>Select a folder to scan for product subfolders.</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Control Panel -->
-    <div class="control-panel">
-      <div class="price-group">
-        <label>DEFAULT PRICE</label>
-        <div class="price-input-wrapper">
-          <span>$</span>
-          <input type="number" id="price-input" value="65" min="5" step="1">
+    <!-- ── Control Bar ── -->
+    <div class="control-bar">
+      <div class="ctrl-group">
+        <div class="ctrl-field">
+          <label>Price $</label>
+          <input type="number" id="price-input" value="65" min="5" step="1" class="ctrl-input price">
+        </div>
+        <div class="ctrl-field">
+          <label>Title Template</label>
+          <input type="text" id="title-template-input" value="${name} - 3D Printed DIY Cosplay Kit" class="ctrl-input title-tpl">
         </div>
       </div>
 
-      <div class="title-group" style="width:200px;">
-        <label>TITLE TEMPLATE</label>
-        <div class="title-input-wrapper">
-          <input type="text" id="title-template-input" value="${name} - 3D Printed DIY Cosplay Kit" placeholder="${name} - 3D Printed DIY Cosplay Kit">
-        </div>
-      </div>
+      <div class="ctrl-divider"></div>
 
-      <div class="deepseek-group" style="display:flex; flex-direction:column; gap:4px;">
-        <label style="font-size: 10px; font-weight: 600; color: #64748b; padding-left: 2px;">AI KEY</label>
-        <div style="display:flex; align-items:center; background: #020617; border: 1px solid var(--border); border-radius: 8px; overflow:hidden; padding-right:2px;">
-          <input type="password" id="ai-key-input" placeholder="OpenRouter Key..." style="background:transparent; border:none; color:var(--text); font-size:11px; font-weight:600; width:90px; padding:4px 6px; outline:none;">
-          <button id="ai-verify-btn" class="btn" style="padding:1px 6px; font-size:9px; background:var(--accent); color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer; margin:1px 0; height:18px; display:inline-flex; align-items:center; justify-content:center;">✓</button>
-          <span id="ai-status" class="status-pill" style="font-size:8px; padding:1px 4px; background:#1e2937; color:#cbd5e1; margin-left:2px; margin-right:2px; border-radius:4px; white-space:nowrap;">No Key</span>
-        </div>
-      </div>
-
-      <div class="price-group" style="justify-content:center;gap:2px;">
-        <label style="font-size:10px;font-weight:600;color:#64748b;white-space:nowrap;">AI</label>
-        <div style="display:flex;align-items:center;gap:4px;background:#020617;border:1px solid var(--border);border-radius:8px;padding:3px 8px;">
-          <input type="checkbox" id="ai-toggle" style="cursor:pointer;width:14px;height:14px;" checked>
-          <span style="font-size:10px;color:var(--muted);white-space:nowrap;" id="ai-toggle-label">ON</span>
-        </div>
-      </div>
-
-      <div class="price-group" style="justify-content:center;">
-        <label>MAX</label>
-        <div class="price-input-wrapper">
-          <input type="number" id="max-uploads-input" placeholder="∞" min="0" max="999" step="1" style="width:42px;">
-        </div>
-      </div>
-
-      <div class="price-group" style="justify-content:center;">
-        <label>AI SORT</label>
-        <div style="padding:3px 8px;">
-          <input type="checkbox" id="ai-sort-checkbox" style="cursor:pointer;width:14px;height:14px;">
-        </div>
-      </div>
-
-      <div class="marketplace-group" style="display:flex; flex-direction:column; gap:4px; position:relative; z-index:50;">
-        <label style="font-size: 10px; font-weight: 600; color: #64748b; padding-left: 2px;">🌐 POST TO</label>
-        <div style="display:flex; align-items:center; gap:4px;">
-          <select id="marketplace-select" style="background:#020617; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:11px; font-weight:600; padding:3px 6px; outline:none; cursor:pointer; min-width:100px;">
-            <option value="ebay.de">🇩🇪 ebay.de</option>
-            <option value="ebay.ca">🇨🇦 ebay.ca</option>
-          </select>
-          <div style="display:flex;align-items:center;gap:2px;background:#020617;border:1px solid var(--border);border-radius:8px;padding:3px 6px;cursor:pointer;" id="multi-toggle" title="Enable cross-posting to multiple markets">
-            <input type="checkbox" id="multi-checkbox" style="cursor:pointer;width:12px;height:12px;">
-            <span id="multi-label" style="font-size:9px;color:var(--muted);white-space:nowrap;">DE+CA</span>
+      <div class="ctrl-group">
+        <div class="ctrl-field">
+          <label>AI Key</label>
+          <div style="display:flex;align-items:center;gap:3px;">
+            <input type="password" id="ai-key-input" placeholder="OpenRouter..." class="ctrl-input key">
+            <button id="ai-verify-btn" class="rbtn rbtn-primary" style="font-size:9px;padding:2px 6px;">✓</button>
+            <span id="ai-status" class="pill pill-pending" style="font-size:8px;">No Key</span>
           </div>
         </div>
-        <div id="multi-panel" style="display:none; position:absolute; top:100%; left:0; z-index:200; background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:8px 12px; min-width:160px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
-          <div style="display:flex; flex-direction:column; gap:4px; font-size:11px;">
-            <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text);padding:2px 0;"><input type="checkbox" class="market-cb" value="ebay.de" checked> 🇩🇪 ebay.de</label>
-            <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text);padding:2px 0;"><input type="checkbox" class="market-cb" value="ebay.ca" checked> 🇨🇦 ebay.ca</label>
+        <div class="ctrl-toggle" id="ai-toggle-wrap">
+          <input type="checkbox" id="ai-toggle" checked>
+          <span id="ai-toggle-label">AI ON</span>
+        </div>
+        <div class="ctrl-field">
+          <label>Max/Day</label>
+          <input type="number" id="max-uploads-input" placeholder="∞" class="ctrl-input max">
+        </div>
+      </div>
+
+      <div class="ctrl-divider"></div>
+
+      <div class="ctrl-group" style="position:relative;">
+        <div class="ctrl-field">
+          <label>Post To</label>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <select id="marketplace-select" class="ctrl-select">
+              <option value="ebay.de">🇩🇪 ebay.de</option>
+              <option value="ebay.ca">🇨🇦 ebay.ca</option>
+            </select>
+            <div class="ctrl-toggle" id="multi-toggle" title="Cross-post to multiple markets">
+              <input type="checkbox" id="multi-checkbox">
+              <span id="multi-label">Multi</span>
+            </div>
           </div>
         </div>
-      </div>
-
-      <button id="manage-templates-btn" class="btn btn-secondary">
-        📋 Templates
-      </button>
-
-      <div class="visibility-controls" style="display:flex; flex-direction:column; gap:3px; font-size:10px;">
-        <label style="color:#64748b; font-weight:600; font-size:10px;">VISIBILITY</label>
-        <div style="display:flex; gap:4px;">
-          <button id="toggle-chrome-btn" class="btn btn-secondary" style="padding:3px 6px; font-size:9px;">Chrome: Hidden</button>
+        <div id="multi-panel">
+          <label><input type="checkbox" class="market-cb" value="ebay.de" checked> 🇩🇪 ebay.de</label>
+          <label><input type="checkbox" class="market-cb" value="ebay.ca" checked> 🇨🇦 ebay.ca</label>
         </div>
       </div>
 
-      <div style="flex:1"></div>
+      <div class="ctrl-divider"></div>
 
-      <button id="pause-btn" class="btn btn-secondary" disabled>
-        ⏸ Pause
-      </button>
+      <button id="manage-templates-btn" class="util-btn util-btn-ghost">📋 Templates</button>
+      <button id="toggle-chrome-btn" class="util-btn util-btn-ghost">Chrome: Hidden</button>
 
-      <button id="start-btn" class="btn btn-primary" disabled>
-        ▶ Start Automation
-      </button>
+      <div class="spacer"></div>
+
+      <button id="pause-btn" disabled>⏸ Pause</button>
+      <button id="start-btn" disabled>▶ Start Automation</button>
     </div>
   </div>
 
-  <!-- Live Log Console -->
+  <!-- ── Log Console ── -->
   <div class="log-console">
     <div class="log-header">
-      <span>LIVE LOG • BACKGROUND EVENTS</span>
-      <button id="clear-log-btn" style="background:none; border:none; color:#64748b; font-size:10px; cursor:pointer;">CLEAR</button>
-      <button id="copy-log-btn" style="background:none; border:none; color:#64748b; font-size:10px; cursor:pointer; margin-left:8px;">COPY</button>
+      <span>LIVE LOG</span>
+      <div>
+        <button id="clear-log-btn" style="background:none;border:none;color:var(--muted);font-family:Inter;font-size:9px;cursor:pointer;font-weight:700;">CLEAR</button>
+        <button id="copy-log-btn" style="background:none;border:none;color:var(--muted);font-family:Inter;font-size:9px;cursor:pointer;font-weight:700;margin-left:8px;">COPY</button>
+      </div>
     </div>
     <div class="log-content" id="log-content"></div>
   </div>
 
-  <!-- Premium Templates Management Modal -->
+  <!-- ── Templates Modal ── -->
   <div id="templates-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" id="templates-modal-backdrop"></div>
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Manage Description Templates</h3>
+        <h3>Manage Templates</h3>
         <button class="modal-close" id="templates-modal-close">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="templates-split">
-          <div class="templates-list-pane">
-            <div class="section-title">TEMPLATES</div>
-            <div id="templates-list-items">
-              <!-- Rendered dynamically -->
-            </div>
-            <button id="add-template-btn" class="btn btn-secondary" style="width:100%; margin-top:10px; font-size:12px; padding:6px;">+ Add New Template</button>
+        <div class="tpl-split">
+          <div class="tpl-list">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Templates</div>
+            <div class="tpl-list-items" id="templates-list-items"></div>
+            <button id="add-template-btn" class="util-btn util-btn-ghost" style="width:100%;margin-top:6px;">+ New</button>
           </div>
-          <div class="templates-edit-pane">
-            <div id="template-editor-form" style="display:none; flex-direction:column; gap:12px; height:100%;">
+          <div class="tpl-edit">
+            <div id="template-editor-form" style="display:none;flex-direction:column;gap:10px;flex:1;">
               <div class="input-group">
-                <label>Template Name / Label</label>
-                <input type="text" id="tpl-label-input" class="modal-input" placeholder="e.g. Shield DIY">
+                <label>Name</label>
+                <input type="text" id="tpl-label-input" class="modal-input" placeholder="e.g. Helmet DIY">
               </div>
-              <div class="input-group" style="flex:1; display:flex; flex-direction:column;">
-                <label>Description Text (Use \${name} for product name)</label>
-                <textarea id="tpl-text-input" class="modal-input" style="flex:1; resize:none; font-family:sans-serif; font-size:12px;" placeholder="Write description template..."></textarea>
+              <div class="input-group" style="flex:1;display:flex;flex-direction:column;">
+                <label>Text — use ${name} for product name</label>
+                <textarea id="tpl-text-input" class="modal-input modal-textarea"></textarea>
               </div>
-              <div style="display:flex; gap:8px; justify-content:flex-end;">
-                <button id="delete-template-btn" class="btn btn-danger" style="padding:6px 14px; font-size:12px;">Delete</button>
-                <button id="save-template-btn" class="btn btn-primary" style="padding:6px 18px; font-size:12px;">Save Template</button>
+              <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button id="delete-template-btn" class="rbtn rbtn-red">Delete</button>
+                <button id="save-template-btn" class="rbtn rbtn-primary">Save</button>
               </div>
             </div>
-            <div id="template-editor-empty" class="empty-state" style="height:100%; display:flex; align-items:center; justify-content:center;">
-              Select a template on the left or create a new one to edit.
+            <div id="template-editor-empty" class="empty-state" style="flex:1;display:flex;align-items:center;justify-content:center;">
+              Select a template to edit or create a new one.
             </div>
           </div>
         </div>
@@ -1158,50 +671,70 @@
     </div>
   </div>
 
-  <!-- Drag-and-Drop Image Manager Modal -->
+  <!-- ── Image Upload Modal ── -->
   <div id="image-manager-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" id="image-manager-modal-backdrop"></div>
-    <div class="modal-content" style="width: 600px; height: 450px;">
+    <div class="modal-content" style="width:580px;height:420px;">
       <div class="modal-header">
-        <h3>Upload Images to <span id="image-manager-folder-name" style="color:var(--accent);">folder_name</span></h3>
+        <h3>Upload Images — <span id="image-manager-folder-name" style="color:var(--accent);">folder</span></h3>
         <button class="modal-close" id="image-manager-modal-close">&times;</button>
       </div>
-      <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; height:100%; overflow:hidden;">
-        <div id="image-dropzone" style="border: 2px dashed var(--border); border-radius: 10px; padding: 30px; text-align: center; background: #020617; cursor: pointer; transition: all 0.2s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;">
-          <span style="font-size: 32px;">📸</span>
-          <div style="font-size:13px; font-weight:600; color:#cbd5e1;">Drag and drop images here, or click to select files</div>
-          <div style="font-size:11px; color:var(--muted);">Supports JPG, PNG, WEBP (Max 12 files)</div>
+      <div class="modal-body">
+        <div id="image-dropzone">
+          <span style="font-size:28px;">📸</span>
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);">Drag images here or click to browse</div>
+          <div style="font-size:10px;color:var(--muted);">JPG, PNG, WEBP — max 12 files</div>
           <input type="file" id="image-file-input" multiple accept="image/*" style="display:none;">
         </div>
-
-        <div style="flex:1; display:flex; flex-direction:column; min-height:0; gap:8px;">
-          <div class="section-title" style="margin:0;">PREVIEW IMAGES</div>
-          <div id="image-preview-grid" style="display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; overflow-y:auto; flex:1; padding:4px; border: 1px solid var(--border); border-radius:8px; background:#020617;">
-            <div class="empty-state" id="image-preview-empty" style="grid-column: span 5; padding: 20px; font-size:12px; color:var(--muted); text-align:center;">No images selected yet.</div>
+        <div style="margin-top:10px;flex:1;display:flex;flex-direction:column;min-height:0;">
+          <div class="img-grid" id="image-preview-grid">
+            <div class="empty-state" id="image-preview-empty" style="grid-column:span 5;">No images selected.</div>
           </div>
         </div>
-
-        <div style="display:flex; gap:8px; justify-content:flex-end; padding-top:4px;">
-          <button id="cancel-upload-btn" class="btn btn-secondary" style="padding:6px 14px; font-size:12px;">Cancel</button>
-          <button id="save-upload-btn" class="btn btn-primary" style="padding:6px 18px; font-size:12px;" disabled>Save Images</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+          <button id="cancel-upload-btn" class="util-btn util-btn-ghost">Cancel</button>
+          <button id="save-upload-btn" class="rbtn rbtn-primary" disabled>Save</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Product Notes Modal -->
+  <!-- ── Notes Modal ── -->
   <div id="notes-modal" class="modal" style="display:none;">
     <div class="modal-backdrop" id="notes-modal-backdrop"></div>
-    <div class="modal-content" style="width:500px;height:380px;">
+    <div class="modal-content" style="width:460px;height:340px;">
       <div class="modal-header">
         <h3>📝 Notes — <span id="notes-folder-name" style="color:var(--accent);">folder</span></h3>
         <button class="modal-close" id="notes-modal-close">&times;</button>
       </div>
-      <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;height:100%;">
-        <textarea id="notes-textarea" class="modal-input" style="flex:1;resize:none;font-family:sans-serif;font-size:12px;line-height:1.5;" placeholder="Add production notes here...&#10;e.g. Default scaled to 6ft/200lbs&#10;Parts come pre-split, 20-30 parts&#10;These notes will be added to your listing description."></textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button id="notes-delete-btn" class="btn btn-danger" style="font-size:11px;">🗑️ Clear</button>
-          <button id="notes-save-btn" class="btn btn-primary" style="font-size:11px;">💾 Save Notes</button>
+      <div class="modal-body">
+        <textarea id="notes-textarea" class="modal-input modal-textarea" style="flex:1;" placeholder="Production notes...&#10;These will be appended to your listing description."></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+          <button id="notes-delete-btn" class="rbtn rbtn-red">Clear</button>
+          <button id="notes-save-btn" class="rbtn rbtn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Image Reorder Modal ── -->
+  <div id="reorder-modal" class="modal" style="display:none;">
+    <div class="modal-backdrop" id="reorder-modal-backdrop"></div>
+    <div class="modal-content" style="width:640px;height:460px;">
+      <div class="modal-header">
+        <h3>🖼️ Reorder Images — <span id="reorder-folder-name" style="color:var(--accent);">folder</span></h3>
+        <button class="modal-close" id="reorder-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:11px;color:var(--text-dim);">Click images in your desired order (1st, 2nd, 3rd...). Last click resets.</div>
+        <div id="reorder-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;overflow-y:auto;flex:1;padding:4px;border:1px solid var(--border-light);border-radius:8px;background:var(--bg);">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">
+          <button id="reorder-reset-btn" class="util-btn util-btn-ghost">🔄 Reset Order</button>
+          <div style="display:flex;gap:8px;">
+            <button id="reorder-cancel-btn" class="util-btn util-btn-ghost">Cancel</button>
+            <button id="reorder-save-btn" class="rbtn rbtn-primary">💾 Save Order</button>
+          </div>
         </div>
       </div>
     </div>

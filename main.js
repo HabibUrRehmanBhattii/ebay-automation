@@ -7,6 +7,8 @@ const { spawn, fork, execSync } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(require('child_process').exec);
 const os = require('os');
+const Jimp = require('jimp');
+const sharp = require('sharp');
 
 require('dotenv').config();
 
@@ -114,6 +116,7 @@ let defaultTitleTemplate = '${name} - 3D Printed DIY Cosplay Kit';
 let aiEnabled = true;
 let maxDailyUploads = 0;
 let aiPhotoSort = false;
+let singleItemRunning = false; // guard against overlapping processOneItem calls
 let multiPostEnabled = false;
 let enabledMarketplaces = ['ebay.de', 'ebay.ca'];
 
@@ -210,6 +213,25 @@ async function loadMarkets() { try { return JSON.parse(await fs.readFile(process
 async function saveMarkets(m) { try { await fs.writeFile(processedMarketsFile, JSON.stringify(m, null, 2)); } catch (_) {} }
 async function addMarketToFolder(name, mkt) { const m = await loadMarkets(); if (!m[name]) m[name] = []; if (!m[name].includes(mkt)) m[name].push(mkt); await saveMarkets(m); sendLog(`[Markets]: "${name}" recorded on ${mkt} (total: ${m[name].join(', ')})`); }
 async function clearMarketsForFolder(name) { const m = await loadMarkets(); delete m[name]; await saveMarkets(m); }
+
+// Imported items persistence — survives queue rebuilds
+const importedItemsFile = path.join(app.getPath('userData'), 'imported_items.json');
+async function loadImportedItems() {
+  try {
+    const raw = await fs.readFile(importedItemsFile, 'utf8');
+    const items = JSON.parse(raw);
+    if (Array.isArray(items) && items.length) {
+      sendLog(`[Import]: Loaded ${items.length} items from persistent store.`);
+    }
+    return Array.isArray(items) ? items : [];
+  } catch { return []; }
+}
+async function saveImportedItems(list) {
+  try {
+    await fs.writeFile(importedItemsFile, JSON.stringify(list, null, 2));
+    sendLog(`[Import]: Saved ${list.length} items to persistent store.`);
+  } catch (e) { sendLog(`[Error]: Failed to save imported items — ${e.message}`); }
+}
 
 const folderCustomizationsFile = path.join(app.getPath('userData'), 'folder_customizations.json');
 async function loadFolderCustomizations() { try { return JSON.parse(await fs.readFile(folderCustomizationsFile, 'utf8')); } catch { return {}; } }
@@ -326,7 +348,7 @@ ipcMain.handle('get-last-folder', async () => { try { const s = await loadSettin
 
 function getFolderValidity(name, imageCount) {
   if (imageCount === 0) return { valid: false, status: 'Review', reason: 'No Images' };
-  if (imageCount === 1) return { valid: false, status: 'Review', reason: 'No Images' };
+  if (imageCount === 1) return { valid: false, status: 'Review', reason: 'Only 1 Image' };
   if (/^item_/i.test(name)) return { valid: false, status: 'Review', reason: 'Generic Name' };
   if (/\s\(\d+\)$/.test(name)) return { valid: false, status: 'Review', reason: 'Duplicate' };
   return { valid: true, status: 'Pending', reason: null };
@@ -362,12 +384,111 @@ ipcMain.handle('scan-folder', async (event, folderPath) => {
         qi.publishedMarkets = [currentMarketplace];
       }
     }
+    // Merge imported items from persistent store
+    const importedStore = await loadImportedItems();
+    mergeImportedIntoQueue(importedStore);
     const doneWithMarkets = currentQueue.filter(q => q.status === 'Done' && q.publishedMarkets && q.publishedMarkets.length > 0);
     if (doneWithMarkets.length > 1) sendLog(`[Markets]: ${doneWithMarkets.length} items with badges. Example: "${doneWithMarkets[0].name}" → ${doneWithMarkets[0].publishedMarkets.join(',')}`);
     sendLog(`[Scanner]: ${currentQueue.length} folders scanned: ${currentQueue.filter(i => i.status !== 'Done').length} pending, ${currentQueue.filter(i => i.status === 'Done').length} published.`);
     sendQueueUpdate(); return currentQueue;
   } catch (err) { sendLog(`[Error]: Could not read directory — ${err.message}`); return []; }
 });
+
+// ==================== Missing Items Import ====================
+// Reads scraped competitor data from the missing_items folder (read-only).
+// Each subfolder has: metadata.json, price.txt, description.txt, image_*.jpg
+ipcMain.handle('import-missing-items', async (event, missingItemsPath) => {
+  if (!missingItemsPath) return { success: false, message: 'No path provided' };
+  try {
+    const entries = await fs.readdir(missingItemsPath, { withFileTypes: true });
+    const subdirs = entries.filter(e => e.isDirectory());
+    if (!subdirs.length) return { success: false, message: 'No subfolders found in missing_items' };
+    sendLog(`[Scanner]: Found ${subdirs.length} missing-item folders. Importing...`);
+    const processed = await loadProcessed();
+    const existing = await loadImportedItems();
+    const existingNames = new Set(existing.map(e => e.name));
+    let imported = 0;
+
+    for (const dir of subdirs) {
+      const folderPath = path.join(missingItemsPath, dir.name);
+      // Skip if already processed on eBay OR already in imported_items list
+      if (processed.includes(dir.name) || existingNames.has(dir.name)) continue;
+
+      try {
+        // Read price
+        let price = defaultPrice;
+        const pricePath = path.join(folderPath, 'price.txt');
+        try {
+          const priceRaw = (await fs.readFile(pricePath, 'utf8')).trim();
+          const numMatch = priceRaw.match(/[\d,.]+/);
+          if (numMatch) {
+            const parsed = parseFloat(numMatch[0].replace(',', '.'));
+            if (parsed && !isNaN(parsed)) price = parsed;
+          }
+        } catch (_) {}
+
+        // Read description
+        let scrapedDesc = '';
+        const descPath = path.join(folderPath, 'description.txt');
+        try { scrapedDesc = (await fs.readFile(descPath, 'utf8')).trim(); } catch (_) {}
+
+        // Find images
+        const images = await getImagesInFolder(folderPath);
+        const thumb = images.length > 0 ? images[0] : null;
+
+        const item = {
+          name: dir.name,
+          fullPath: folderPath,
+          status: 'Pending',
+          errorReason: null,
+          thumb,
+          price,
+          template: 'scraped',
+          publishedMarkets: [],
+          generatedDescription: scrapedDesc,
+          notes: '',
+        };
+        existing.push(item);
+        existingNames.add(dir.name);
+        imported++;
+        sendLog(`[Import]: "${dir.name.substring(0, 45)}..." — €${price} | ${images.length} imgs | ${scrapedDesc.length} chars desc`);
+      } catch (itemErr) {
+        sendLog(`[Scanner]: Skipped "${dir.name}" — ${itemErr.message}`);
+      }
+    }
+
+    await saveImportedItems(existing);
+    // Merge into current queue
+    mergeImportedIntoQueue(existing);
+
+    sendLog(`[Scanner]: ✅ Imported ${imported} new items. ${existing.length} total in imported store.`);
+    sendQueueUpdate();
+    return { success: true, imported, total: currentQueue.length };
+  } catch (err) {
+    sendLog(`[Error]: Missing-items import failed — ${err.message}`);
+    return { success: false, message: err.message };
+  }
+});
+
+// Merge persisted imported items into currentQueue (override existing, add new)
+function mergeImportedIntoQueue(importedList) {
+  if (!importedList || !importedList.length) return;
+  let overridden = 0, added = 0;
+  for (const imp of importedList) {
+    // Find existing item with same name and override its price/desc/template
+    const existing = currentQueue.find(i => i.name === imp.name);
+    if (existing) {
+      if (imp.price != null && imp.price !== 65) existing.price = imp.price;
+      if (imp.generatedDescription) existing.generatedDescription = imp.generatedDescription;
+      if (imp.template && imp.template !== 'universal') existing.template = imp.template;
+      overridden++;
+      continue;
+    }
+    currentQueue.push({ ...imp });
+    added++;
+  }
+  if (overridden || added) sendLog(`[Import]: Applied imported data to ${overridden} existing items, added ${added} new items.`);
+}
 
 // ==================== Folder Name Cleaning ====================
 function cleanFolderName(name) {
@@ -431,6 +552,59 @@ async function forceExtractImagesFromZips(folderPath) {
   sendLog(`[Unzip]: Done. ${newCount} images now in folder.`);
   return { success: true, newCount };
 }
+
+// ==================== Image Reordering ====================
+ipcMain.handle('get-images-for-reorder', async (event, folderPath) => {
+  try {
+    const images = await getImagesInFolder(folderPath);
+    // Return basename + full path for UI
+    return images.map(p => ({ name: path.basename(p), path: p }));
+  } catch (_) { return []; }
+});
+
+ipcMain.handle('reorder-images', async (event, folderPath, orderedNames) => {
+  try {
+    if (!folderPath || !orderedNames || !orderedNames.length) return { success: false, message: 'No data' };
+    const images = await getImagesInFolder(folderPath);
+    if (!images.length) return { success: false, message: 'No images' };
+    // Rename all to temp names first to avoid collisions, track original→temp mapping
+    const nameToTemp = {}; // original basename → temp path
+    for (let i = 0; i < images.length; i++) {
+      const origName = path.basename(images[i]);
+      const ext = path.extname(images[i]);
+      const tmpPath = path.join(folderPath, `_tmp_reorder_${i}${ext}`);
+      await fs.rename(images[i], tmpPath);
+      nameToTemp[origName] = tmpPath;
+    }
+    // Now rename in the desired order
+    let renamed = 0;
+    const remaining = new Set(Object.keys(nameToTemp));
+    for (let i = 0; i < orderedNames.length; i++) {
+      const tmpPath = nameToTemp[orderedNames[i]];
+      if (!tmpPath) continue;
+      const ext = path.extname(tmpPath);
+      const newName = `image_${String(i + 1).padStart(2, '0')}${ext}`;
+      const newPath = path.join(folderPath, newName);
+      await fs.rename(tmpPath, newPath);
+      remaining.delete(orderedNames[i]);
+      renamed++;
+    }
+    // Any leftover temp files (not in orderedNames) get renamed to keep ext order
+    let leftovers = [...remaining];
+    for (let i = 0; i < leftovers.length; i++) {
+      const tmpPath = nameToTemp[leftovers[i]];
+      if (!tmpPath) continue;
+      const ext = path.extname(tmpPath);
+      const newName = `image_${String(renamed + i + 1).padStart(2, '0')}${ext}`;
+      await fs.rename(tmpPath, path.join(folderPath, newName));
+    }
+    sendLog(`[Reorder]: Renamed ${renamed} images in "${path.basename(folderPath)}".`);
+    return { success: true, renamed };
+  } catch (err) {
+    sendLog(`[Reorder]: Failed — ${err.message}`);
+    return { success: false, message: err.message };
+  }
+});
 
 ipcMain.handle('clean-folder-names', async (event, folderPath) => {
   if (isAutomationRunning) return { success: false, message: 'Cannot clean while automation is running.' };
@@ -542,20 +716,176 @@ async function humanType(page, selector, text) {
   }
 }
 
+// Check if automation is paused — returns false if stopped, true if can continue
+async function checkPause(label) {
+  if (!isAutomationPaused) return true;
+  if (label) sendLog(`[Pause]: Waiting at "${label}"...`);
+  while (isAutomationPaused && isAutomationRunning) await delay(250);
+  if (!isAutomationRunning) return false;
+  if (label) sendLog(`[Pause]: Resumed after "${label}".`);
+  return true;
+}
+
 // Natural human pause — random scrolling, idle mouse movements, reading time
 async function naturalPause(page, minMs = 2000, maxMs = 6000) {
   const duration = randomBetween(minMs, maxMs);
   const start = Date.now();
   while (Date.now() - start < duration) {
-    const action = Math.random();
-    if (action < 0.3) {
-      // Scroll slightly
-      await page.mouse.wheel(0, randomBetween(-50, 100));
-    } else if (action < 0.5) {
-      // Idle mouse movement
-      await page.mouse.move(randomBetween(200, 1000), randomBetween(200, 600), { steps: randomBetween(2, 6) });
+    if (!isAutomationPaused) {
+      const action = Math.random();
+      if (action < 0.3) {
+        // Scroll slightly
+        await page.mouse.wheel(0, randomBetween(-50, 100));
+      } else if (action < 0.5) {
+        // Idle mouse movement
+        await page.mouse.move(randomBetween(200, 1000), randomBetween(200, 600), { steps: randomBetween(2, 6) });
+      }
     }
     await delay(randomBetween(200, 600));
+    // Check pause during natural pauses too
+    while (isAutomationPaused && isAutomationRunning) await delay(250);
+    if (!isAutomationRunning) break;
+  }
+}
+
+// ============ Watermark "Example*" images ============
+// Detects images whose filename starts with "Example" (case-insensitive)
+// and overlays "EXAMPLE OF ITEM" diagonally across them.
+// Returns [watermarkedPaths, tempFiles] — tempFiles must be cleaned up after upload.
+async function watermarkExampleImages(imagePaths) {
+  const tempFiles = [];
+  const result = [];
+  const examplePattern = /^Example\b/i;
+
+  for (const imgPath of imagePaths) {
+    const basename = path.basename(imgPath);
+    if (!examplePattern.test(basename)) {
+      result.push(imgPath); // pass through unchanged
+      continue;
+    }
+
+    try {
+      // Jimp doesn't support WebP natively — pre-convert WebP to PNG via sharp
+      const isWebP = /\.webp$/i.test(basename);
+      let img;
+      if (isWebP) {
+        const pngBuf = await sharp(imgPath).png().toBuffer();
+        img = await Jimp.read(pngBuf);
+      } else {
+        img = await Jimp.read(imgPath);
+      }
+      const w = img.getWidth();
+      const h = img.getHeight();
+
+      // Create a text layer on transparent background, composite onto a clone
+      const layer = await Jimp.create(w, h, 0x00000000);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+      const text = "EXAMPLE OF ITEM";
+      // Measure and scale font size to ~8% of image width
+      const maxFontW = w * 0.08;
+      const fontSize = Math.min(128, Math.max(16, Math.round(maxFontW)));
+      const scaledFont = await Jimp.loadFont(
+        fontSize >= 128 ? Jimp.FONT_SANS_128_WHITE :
+        fontSize >= 64  ? Jimp.FONT_SANS_64_WHITE  :
+        fontSize >= 32  ? Jimp.FONT_SANS_32_WHITE  :
+        fontSize >= 16  ? Jimp.FONT_SANS_16_WHITE  : Jimp.FONT_SANS_8_WHITE
+      );
+      const textW = Jimp.measureText(scaledFont, text);
+      const textH = Jimp.measureTextHeight(scaledFont, text, w);
+
+      // Repeat diagonally across the image
+      const stepX = textW + (w * 0.25);
+      const stepY = textH + (h * 0.25);
+      for (let y = -textH; y < h + textH; y += stepY) {
+        for (let x = -textW * 0.5; x < w + textW; x += stepX) {
+          layer.print(scaledFont, Math.round(x), Math.round(y), text);
+        }
+      }
+
+      // Apply opacity (~25%) and composite
+      layer.opacity(0.25);
+      const watermarked = img.clone();
+      watermarked.composite(layer, 0, 0);
+
+      // Jimp cannot write WebP — save as PNG for watermarked WebP originals
+      const origExt = path.extname(basename).toLowerCase();
+      const outExt = isWebP ? '.png' : origExt;
+      const tmpPath = path.join(os.tmpdir(), `ebay-wm-${Date.now()}-${Math.random().toString(36).slice(2)}${outExt}`);
+      await watermarked.writeAsync(tmpPath);
+      sendLog(`[Watermark]: "${basename}" → "${path.basename(tmpPath)}"`);
+      result.push(tmpPath);
+      tempFiles.push(tmpPath);
+    } catch (e) {
+      sendLog(`[Watermark]: Failed for "${basename}" — ${e.message}. Using original.`);
+      result.push(imgPath); // fallback to original
+    }
+  }
+
+  return { paths: result, tempFiles };
+}
+
+// Cleanup temp watermark files
+async function cleanupTempFiles(tempFiles) {
+  for (const f of tempFiles) {
+    try { await fs.unlink(f); } catch (_) {}
+  }
+}
+
+// Compress images that are too large for Playwright's 50MB-per-batch transfer limit.
+// Resizes images >8MB down to max 2048px on longest edge, JPEG quality 80.
+// Returns array of file paths (some may be temp copies if compression was needed).
+async function ensureImagesUnderSizeLimit(imagePaths) {
+  const MAX_PER_FILE = 8 * 1024 * 1024;  // 8 MB per file
+  const tempFiles = [];
+  const result = [];
+  for (const imgPath of imagePaths) {
+    try {
+      const stat = require('fs').statSync(imgPath);
+      if (stat.size <= MAX_PER_FILE) {
+        result.push(imgPath);
+        continue;
+      }
+      // Compress large image — use sharp for better format support (WebP, etc.)
+      const basename = path.basename(imgPath);
+      sendLog(`[Compress]: "${basename}" ${(stat.size/1024/1024).toFixed(1)}MB — resizing...`);
+      const isWebP = /\.webp$/i.test(basename);
+      let img;
+      if (isWebP) {
+        const pngBuf = await sharp(imgPath).png().toBuffer();
+        img = await Jimp.read(pngBuf);
+      } else {
+        img = await Jimp.read(imgPath);
+      }
+      const w = img.getWidth(), h = img.getHeight();
+      const maxDim = 2048;
+      if (w > maxDim || h > maxDim) {
+        const scale = maxDim / Math.max(w, h);
+        img.resize(Math.round(w * scale), Math.round(h * scale));
+      }
+      img.quality(80);
+      const origExt = path.extname(basename).toLowerCase();
+      const outExt = isWebP ? '.png' : origExt;
+      const tmpPath = path.join(os.tmpdir(), `ebay-cmpr-${Date.now()}-${Math.random().toString(36).slice(2)}${outExt}`);
+      await img.writeAsync(tmpPath);
+      const newSize = require('fs').statSync(tmpPath).size;
+      sendLog(`[Compress]: → ${path.basename(tmpPath)} ${(newSize/1024/1024).toFixed(1)}MB`);
+      result.push(tmpPath);
+      tempFiles.push(tmpPath);
+    } catch (e) {
+      sendLog(`[Compress]: Failed for "${path.basename(imgPath)}" — ${e.message}. Using original.`);
+      result.push(imgPath);
+    }
+  }
+  return { paths: result, tempFiles };
+}
+
+// Quick check: is the Playwright page still alive and on an eBay listing form?
+async function isPageOnListingForm(page) {
+  try {
+    const url = page.url();
+    return url.includes('ebay.') && (url.includes('/lstng') || url.includes('/itm'));
+  } catch (_) {
+    return false;
   }
 }
 
@@ -659,14 +989,26 @@ async function createEbayListing({ searchName, title, description, price, imageP
     try { browser = await chromium.connectOverCDP(ep); sendBrowserStatus('connected'); break; }
     catch (e) { lastErr = e; }
   }
+  // Retry: restart Chrome once if CDP is unreachable
+  if (!browser) {
+    sendLog(`[Playwright]: CDP unreachable — restarting Chrome...`);
+    try { killBotChrome(); await delay(800); } catch (_) {}
+    const r = await launchAutomationChrome();
+    if (r.success) { await delay(3000); for (const ep of cdpEndpoints) { try { browser = await chromium.connectOverCDP(ep); sendBrowserStatus('connected'); break; } catch (e) { lastErr = e; } } }
+  }
   if (!browser) return { success: false, message: lastErr?.message || 'CDP fail' };
 
+  let wmTempFiles = []; // watermark temp files to clean up
+  let cmprTempFiles = []; // compression temp files to clean up
   try {
     const contexts = browser.contexts();
     const context = contexts.length > 0 ? contexts[0] : await browser.newContext();
     let page = await context.newPage();
     const mp = getMarketplaceConfig();  // ★ locale-aware config
     const domain = mp.domain;
+
+    // === Pause checkpoint: before navigation
+    if (!await checkPause('before-navigate')) { await browser.disconnect().catch(() => {}); return { success: false, message: 'Paused by user' }; }
 
     // ---- 1. Navigate to listing creation ----
     let sellSimilarUsed = false;
@@ -817,6 +1159,9 @@ async function createEbayListing({ searchName, title, description, price, imageP
 
     } // end if(!sellSimilarUsed)
 
+    // === Pause checkpoint: before form
+    if (!await checkPause('before-form')) { await browser.disconnect().catch(() => {}); return { success: false, message: 'Paused by user' }; }
+
     // ============ ACTUAL LISTING FORM ============
     sendLog(`[Form] ${page.url()}`);
 
@@ -829,24 +1174,66 @@ async function createEbayListing({ searchName, title, description, price, imageP
     }
 
     // Photos — use hidden file input directly, NEVER click upload button (avoids native file picker)
+    cmprTempFiles = []; // reset cleanup list for this run
+    let uploadPaths = imagePaths || [];
     if (imagePaths && imagePaths.length > 0) {
+      // === Pause checkpoint: before photos
+      if (!await checkPause('before-photos')) { await browser.disconnect().catch(() => {}); return { success: false, message: 'Paused by user' }; }
       try {
+        // Step A: Watermark "Example*" images
+        const wm = await watermarkExampleImages(imagePaths);
+        uploadPaths = wm.paths;
+        wmTempFiles = wm.tempFiles;
+        // Step B: Compress any images >8MB to stay under Playwright 50MB limit
+        const cmp = await ensureImagesUnderSizeLimit(uploadPaths);
+        uploadPaths = cmp.paths;
+        cmprTempFiles = cmp.tempFiles;
         // Sort: images first, then videos. eBay allows 12 photos but videos count too
         const isImg = p => /\.(jpe?g|png|webp|gif)$/i.test(p);
-        const imgs = [...imagePaths].sort((a, b) => {
+        const imgs = [...uploadPaths].sort((a, b) => {
           const aImg = isImg(a) ? 0 : 1;
           const bImg = isImg(b) ? 0 : 1;
           return aImg - bImg || a.localeCompare(b);
         }).slice(0, 12);
         sendLog(`[7/10] ${imgs.length} photos...`);
+        // Check page is still alive and on form before uploading
+        if (!await isPageOnListingForm(page)) {
+          sendLog(`[Warn] Page left form before photos: ${(await page.url().catch(() => 'CLOSED'))}. Recovering...`);
+          await page.goto(`https://www.${domain}/lstng`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+          await delay(4000);
+        }
         // Go directly to the hidden <input type="file"> — clicking the upload button opens a native dialog
         const fileInput = page.locator('input[type="file"]').first();
         await fileInput.waitFor({ state: 'attached', timeout: 10000 });
-        await fileInput.setInputFiles(imgs, { timeout: 30000 });
+        await fileInput.setInputFiles(imgs, { timeout: 60000 });
         sendLog('[7/10] Photos uploaded.');
         await naturalPause(page, 2000, 4000);
         await delay(5000);
       } catch (e) { sendLog(`[Warn] Photos: ${e.message}`); }
+    }
+
+    // === Page health check: verify page is still on listing form before filling ===
+    const formAlive = await isPageOnListingForm(page);
+    if (!formAlive) {
+      const currentUrl = await page.url().catch(() => 'CLOSED');
+      sendLog(`[Warn] Page left form (${currentUrl}). Attempting recovery...`);
+      try {
+        await page.goto(`https://www.${domain}/lstng`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await delay(5000);
+        const recovered = await isPageOnListingForm(page);
+        if (!recovered) {
+          sendLog(`[Error]: Page recovery failed. eBay may require login or verification.`);
+          await browser.disconnect().catch(() => {});
+          await cleanupTempFiles([...wmTempFiles, ...cmprTempFiles]);
+          return { success: false, message: 'Page died — eBay may need login/verification' };
+        }
+        sendLog(`[Recover]: Page restored: ${page.url()}`);
+      } catch (e) {
+        sendLog(`[Error]: Page recovery failed: ${e.message}`);
+        await browser.disconnect().catch(() => {});
+        await cleanupTempFiles([...wmTempFiles, ...cmprTempFiles]);
+        return { success: false, message: 'Page died irrecoverably' };
+      }
     }
 
     // Title — force German template for ebay.de, regardless of what defaultTitleTemplate says
@@ -944,10 +1331,14 @@ async function createEbayListing({ searchName, title, description, price, imageP
       }
     }
 
+    // Clean up watermark temp files
+    await cleanupTempFiles([...wmTempFiles, ...cmprTempFiles]);
     try { await browser.disconnect(); } catch (_) {}
     return { success: submitted };
   } catch (err) {
     sendLog(`[Error]: ${err.message}`);
+    // Clean up watermark temp files
+    try { await cleanupTempFiles([...wmTempFiles, ...cmprTempFiles]); } catch (_) {}
     if (browser) { try { await browser.disconnect(); } catch (_) {} }
     return { success: false, message: err.message };
   }
@@ -976,6 +1367,8 @@ function getDescriptionFromTemplate(templatesMap, templateKey, productName, note
 }
 
 async function processOneItem(item, uploadState = { count: 0 }) {
+  if (singleItemRunning && item.status !== 'Processing') { sendLog(`[Guard]: Another item is still running. Skipping "${item.name}".`); return false; }
+  singleItemRunning = true;
   item.status = 'Processing'; sendQueueUpdate();
   sendLog(`[System]: === Starting workflow for "${item.name}" ===`);
   try {
@@ -989,7 +1382,11 @@ async function processOneItem(item, uploadState = { count: 0 }) {
     let productName = item.name;
     if (useAI) productName = await generateTitleWithDeepSeek(apiKey, item.name);
     let description;
-    if (item.generatedDescription && useAI) { description = item.generatedDescription; }
+    if (item.template === 'scraped' && item.generatedDescription) {
+      // Pre-loaded from missing_items import — use as-is (no AI or template needed)
+      description = item.generatedDescription;
+      sendLog(`[Desc]: Using scraped description (${description.length} chars).`);
+    } else if (item.generatedDescription && useAI) { description = item.generatedDescription; }
     else {
       const template = item.template || guessTemplateFromName(item.name);
       sendLog(`[System]: Auto-detected template "${template}" for "${item.name}".`);
@@ -1001,6 +1398,8 @@ async function processOneItem(item, uploadState = { count: 0 }) {
       }
     }
     const priceToUse = (item.price != null) ? item.price : defaultPrice;
+    // Pause checkpoint: before Playwright listing flow
+    if (!await checkPause('before-listing')) return false;
     const result = await createEbayListing({ searchName: item.name, title: productName, description, price: priceToUse, imagePaths, titleTemplate: defaultTitleTemplate, apiKey: useAI ? apiKey : null, uploadState });
     if (result.success) {
       // Record market, but stay Pending if multi-post has remaining markets
@@ -1015,14 +1414,19 @@ async function processOneItem(item, uploadState = { count: 0 }) {
         try {
           const processed = await loadProcessed();
           if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
+          // Remove from imported store so it doesn't reappear on re-scan
+          const impStore = await loadImportedItems();
+          const idx = impStore.findIndex(e => e.name === item.name);
+          if (idx !== -1) { impStore.splice(idx, 1); await saveImportedItems(impStore); }
         } catch (_) {}
       }
       sendLog(`[System]: "${item.name}" → ${currentMarketplace} (${uploadedTo.join(',')}). Done=${allDone}`);
       sendQueueUpdate();
       return true;
-    } else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
+    } else if (!isAutomationRunning) { item.status = 'Pending'; sendLog(`[System]: Stopped during "${item.name}".`); return false; }
+    else { item.status = 'Failed'; sendLog(`[Error]: Playwright flow failed for "${item.name}".`); return false; }
   } catch (err) { item.status = 'Failed'; item.errorReason = err.message; sendLog(`[Error]: ${err.message}`); return false; }
-  finally { sendQueueUpdate(); }
+  finally { singleItemRunning = false; sendQueueUpdate(); }
 }
 
 // ====================================================================
@@ -1031,7 +1435,7 @@ async function processOneItem(item, uploadState = { count: 0 }) {
 async function runAutomationLoop() {
   isAutomationRunning = true; isAutomationPaused = false; sendStatusUpdate();
   const uploadState = { count: 0 };
-  const items = currentQueue.filter(i => i.status === 'Pending');
+  const items = currentQueue.filter(i => i.status === 'Pending' || i.status === 'Review');
   const markets = multiPostEnabled ? enabledMarketplaces : [currentMarketplace];
   sendLog(`[System]: Posting to ${markets.length} market(s): ${markets.join(', ')}`);
 
@@ -1055,6 +1459,8 @@ async function runAutomationLoop() {
       }
 
       try {
+        // Auto-promote Review items (user bypass) to Pending before processing
+        if (item.status === 'Review') { item.status = 'Pending'; sendQueueUpdate(); }
         const ok = await processOneItem(item, uploadState);
         if (ok) itemOk = true;
         currentMarketplace = prevMarket;
@@ -1081,6 +1487,9 @@ async function runAutomationLoop() {
           const rtpl = c.template || guessTemplateFromName(nm);
           currentQueue.push({ name: nm, fullPath: fp, status: isP ? 'Done' : 'Pending', errorReason: null, thumb, price: resolveItemPrice(c.price, rtpl), template: rtpl, publishedMarkets: [] });
         }
+        // Always reload imported items from persistent file
+        const importedStore = await loadImportedItems();
+        mergeImportedIntoQueue(importedStore);
         const reMarkets = await loadMarkets();
         for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = reMarkets[qi.name] || []; }
         sendQueueUpdate();
@@ -1100,7 +1509,7 @@ async function runAutomationLoop() {
     await delay(650);
     if (!isAutomationRunning) break;
   }
-  if (!currentQueue.some(i => i.status === 'Pending') && isAutomationRunning) sendLog('[System]: All pending items completed!');
+  if (!currentQueue.some(i => i.status === 'Pending' || i.status === 'Review') && isAutomationRunning) sendLog('[System]: All pending items completed!');
   isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate();
   sendQueueUpdate();
   await delay(500);
@@ -1130,13 +1539,16 @@ ipcMain.handle('start-automation', async (event, payload) => {
     const validity = getFolderValidity(name, images.length);
     currentQueue.push({ name, fullPath: fp, status: isP ? 'Done' : validity.status, errorReason: isP ? null : validity.reason, thumb, price: itemPrice, template: itemTpl, publishedMarkets: [] });
   }
+  // Merge imported items from persistent store (survives any queue rebuild)
+  const importedStore = await loadImportedItems();
+  mergeImportedIntoQueue(importedStore);
   const saMarkets = await loadMarkets();
   for (const qi of currentQueue) { if (qi.status === 'Done') qi.publishedMarkets = saMarkets[qi.name] || []; }
   sendQueueUpdate();
-  if (!currentQueue.filter(i => i.status === 'Pending').length) { sendLog('[System]: No pending items.'); return { success: false }; }
+  if (!currentQueue.filter(i => i.status === 'Pending' || i.status === 'Review').length) { sendLog('[System]: No pending items.'); return { success: false }; }
   const cdpReady = await ensureAutomationBrowserReady();
   if (!cdpReady) { sendLog(`[Error]: Chrome not ready on port ${CONFIG.CDP_PORT}.`); isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate(); return { success: false, message: 'Chrome not ready' }; }
-  sendLog(`[System]: Starting automation for ${currentQueue.filter(i => i.status === 'Pending').length} items.`);
+  sendLog(`[System]: Starting automation for ${currentQueue.filter(i => i.status === 'Pending' || i.status === 'Review').length} items.`);
   runAutomationLoop();
   return { success: true };
 });
@@ -1145,6 +1557,7 @@ ipcMain.handle('pause-automation', async () => { isAutomationPaused = !isAutomat
 ipcMain.handle('stop-automation', async () => { isAutomationRunning = false; isAutomationPaused = false; sendStatusUpdate(); return { success: true }; });
 
 ipcMain.handle('run-single-item', async (event, payload) => {
+  if (singleItemRunning) return { success: false, message: 'Item is processing' };
   const { folder, defaultPrice: np, titleTemplate: nt } = payload || {};
   if (np != null) defaultPrice = np;
   if (nt != null) defaultTitleTemplate = nt || '${name}';
@@ -1152,6 +1565,8 @@ ipcMain.handle('run-single-item', async (event, payload) => {
   let item = currentQueue.find(i => i.status === 'Pending');
   if (payload?.index != null && currentQueue[payload.index]) item = currentQueue[payload.index];
   if (!item) return { success: false, message: 'Item not found' };
+  // Allow Review items (manual bypass) — user clicked ▶ List to force-post despite low image count
+  if (item.status === 'Review') item.status = 'Pending';
   if (item.status !== 'Pending' && item.status !== 'Done') return { success: false, message: 'Item is not pending or done' };
   if (item && payload) { if (payload.price != null) item.price = payload.price; if (payload.template != null) item.template = payload.template; }
   // If item was Done, reset to Pending + remove from processed.json so it can be re-posted
@@ -1190,6 +1605,10 @@ ipcMain.handle('mark-item-done', async (event, payload) => {
   if (item.status === 'Processing') return { success: false, message: 'Item is processing.' };
   const processed = await loadProcessed();
   if (!processed.includes(item.name)) { processed.push(item.name); await saveProcessed(processed); }
+  // Remove from imported store if present
+  const impStore = await loadImportedItems();
+  const idx = impStore.findIndex(e => e.name === item.name);
+  if (idx !== -1) { impStore.splice(idx, 1); await saveImportedItems(impStore); }
   item.status = 'Done'; sendQueueUpdate();
   await addMarketToFolder(item.name, currentMarketplace);
   return { success: true, name: item.name };
